@@ -1,2 +1,24 @@
-# Auto detect text files and perform LF normalization
+# Detect C# files
+*.cs linguist-language=C#
+
+# Detect XAML files
+*.xaml linguist-language=XAML
+
+# Detect JSON files
+*.json linguist-language=JSON
+
+# Detect Markdown files
+*.md linguist-language=Markdown
+
+# Detect YAML files (if needed later)
+*.yml linguist-language=YAML
+*.yaml linguist-language=YAML
+
+# Detect batch files
+*.bat linguist-language=Batchfile
+
+# Detect Shell scripts
+*.sh linguist-language=Shell
+
+# General text files
 * text=auto
