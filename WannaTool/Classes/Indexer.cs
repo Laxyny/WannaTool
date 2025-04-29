@@ -1,6 +1,7 @@
 using System.IO;
 using System.Text.Json;
 using System.IO.Compression;
+using Microsoft.Toolkit.Uwp.Notifications;
 
 namespace WannaTool
 {
@@ -155,6 +156,7 @@ namespace WannaTool
 
             var results = new List<MainWindow.SearchResult>();
 
+            Utils.ShowToast("Indexing started", "WannaTool is scanning your files...");
             foreach (var root in rootFolders)
             {
                 if (!Directory.Exists(root)) continue;
@@ -162,6 +164,7 @@ namespace WannaTool
             }
 
             _index = results;
+            Utils.ShowToast("Indexing completed", $"All files have been indexed successfully. {results.Count} files");
             Console.WriteLine($"Indexation terminée avec {results.Count} fichiers indexés.");
         }
 
