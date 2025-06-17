@@ -14,6 +14,20 @@ using System.Windows.Media.Imaging;
 using Application = System.Windows.Application;
 using Clipboard = System.Windows.Clipboard;
 using System.IO;
+using System.ComponentModel;
+using System.Net.Http.Headers;
+using System.Net.Http;
+using System.Text.Json;
+using System.Text;
+using KeyEventArgs = System.Windows.Input.KeyEventArgs;
+using System.Windows.Media.Animation;
+using Color = System.Windows.Media.Color;
+using Microsoft.Toolkit.Uwp.Notifications;
+using NHotkey.Wpf;
+using NHotkey;
+using DotNetEnv;
+
+
 
 namespace WannaTool
 {
@@ -27,17 +41,40 @@ namespace WannaTool
         public MainWindow()
         {
             InitializeComponent();
-            Task.Run(() => Indexer.InitializeAsync());
 
             this.Width = SystemParameters.WorkArea.Width;
             this.Height = SystemParameters.WorkArea.Height;
             this.Left = SystemParameters.WorkArea.Left;
             this.Top = SystemParameters.WorkArea.Top;
 
+            SearchBox.PreviewKeyDown += SearchBox_KeyDown;
+
             ApplyBlurEffect();
             SearchBox.Focus();
 
             ShowLoadingIndicatorWhileIndexing();
+
+            try
+            {
+                HotkeyManager.Current.AddOrReplace("CapturePrimary", Key.F5, ModifierKeys.Control | ModifierKeys.Shift, OnCapturePrimary);
+                HotkeyManager.Current.AddOrReplace("CaptureAll", Key.F6, ModifierKeys.Control | ModifierKeys.Shift, OnCaptureAll);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Erreur lors de l'enregistrement des raccourcis : {ex.Message}");
+            }
+        }
+
+        private void OnCapturePrimary(object sender, HotkeyEventArgs e)
+        {
+            ScreenCaptureManager.CapturePrimary();
+            e.Handled = true;
+        }
+
+        private void OnCaptureAll(object sender, HotkeyEventArgs e)
+        {
+            ScreenCaptureManager.CaptureAll();
+            e.Handled = true;
         }
 
         private async void ShowLoadingIndicatorWhileIndexing()
@@ -52,37 +89,12 @@ namespace WannaTool
             });
         }
 
-        private async void LoadIconForResult(SearchResult result)
+        private void ShowToast(string title, string message)
         {
-            if (result.Icon != null) return; // Déjà chargé
-
-            await Task.Run(() =>
-            {
-                try
-                {
-                    var shinfo = new SHFILEINFO();
-                    IntPtr hImg = SHGetFileInfo(result.FullPath, 0, ref shinfo, (uint)Marshal.SizeOf(shinfo), 0x000000100 | 0x000000001);
-
-                    if (hImg != IntPtr.Zero)
-                    {
-                        var icon = Imaging.CreateBitmapSourceFromHIcon(
-                            shinfo.hIcon,
-                            Int32Rect.Empty,
-                            BitmapSizeOptions.FromEmptyOptions());
-
-                        icon.Freeze(); // Important pour éviter des erreurs threading
-
-                        Application.Current.Dispatcher.Invoke(() =>
-                        {
-                            result.Icon = icon;
-                        });
-                    }
-                }
-                catch
-                {
-                    // Ignore erreurs fichiers non trouvés
-                }
-            });
+            new ToastContentBuilder()
+                .AddText(title)
+                .AddText(message)
+                .Show();
         }
 
         [StructLayout(LayoutKind.Sequential)]
@@ -131,12 +143,57 @@ namespace WannaTool
             }
         }
 
+        private async void SearchBox_KeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Enter && ResultsList.HasItems)
+            {
+                var first = ResultsList.Items[0] as SearchResult;
+                if (first != null)
+                {
+                    await ExecuteSearchResult(first);
+                    ResultsList.SelectedItem = null;
+                }
+                e.Handled = true;
+                return;
+            }
+
+            if ((e.Key == Key.Up || e.Key == Key.Down) && ResultsList.HasItems)
+            {
+                // choisir l'index
+                int idx = e.Key == Key.Down ? 0 : ResultsList.Items.Count - 1;
+                ResultsList.SelectedIndex = idx;
+
+                // récupérer le conteneur et y mettre le focus clavier
+                var container = ResultsList.ItemContainerGenerator
+                                   .ContainerFromIndex(idx) as ListBoxItem;
+                if (container != null)
+                {
+                    container.IsSelected = true;
+                    container.Focus();
+                    Keyboard.Focus(container);
+                }
+
+                e.Handled = true;
+                return;
+            }
+        }
+
         protected override void OnPreviewKeyDown(System.Windows.Input.KeyEventArgs e)
         {
             base.OnPreviewKeyDown(e);
 
             if (e.Key == System.Windows.Input.Key.Escape)
             {
+                this.Hide();
+            }
+        }
+
+        private async void ResultsList_KeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Enter && ResultsList.SelectedItem is SearchResult selected)
+            {
+                await ExecuteSearchResult(selected);
+                ResultsList.SelectedItem = null;
                 this.Hide();
             }
         }
@@ -150,7 +207,7 @@ namespace WannaTool
             {
                 if (DateTime.Now - _lastHotkeyPress < _hotkeyCooldown)
                 {
-                    handled = true; // Ignorez l'événement si le cooldown n'est pas terminé
+                    handled = true;
                     return IntPtr.Zero;
                 }
 
@@ -166,12 +223,6 @@ namespace WannaTool
                         ResultsList.ItemsSource = null;
                         ResultsList.Visibility = Visibility.Collapsed;
                         SearchBox.Text = string.Empty;
-
-                        Indexer.ClearIndex();
-
-                        GC.Collect();
-                        GC.WaitForPendingFinalizers();
-                        GC.Collect();
                     };
                     this.BeginAnimation(Window.OpacityProperty, fadeOut);
                 }
@@ -213,6 +264,7 @@ namespace WannaTool
             {
                 ResultsList.Visibility = Visibility.Collapsed;
                 ResultsList.ItemsSource = null;
+                GC.Collect();
                 return;
             }
 
@@ -222,10 +274,47 @@ namespace WannaTool
                 Indexer.MarkAsReady();
             }
 
+            var colon = query.IndexOf(':');
+            if (colon > 0 && colon < query.Length - 1)
+            {
+                var prefix = query[..colon].ToLowerInvariant();
+                var term = query[(colon + 1)..].Trim();
+                if (!string.IsNullOrEmpty(term))
+                {
+                    string[] exts = prefix switch
+                    {
+                        "pdf" => new[] { ".pdf" },
+                        "img" => new[] { ".png", ".jpg", ".jpeg", ".gif", ".bmp" },
+                        "code" => new[] { ".cs", ".js", ".ts", ".html", ".css", ".json", ".xml", ".cpp", ".java" },
+                        _ => null
+                    };
+                    if (exts != null)
+                    {
+                        var filtered = Indexer.Search(term, exts);
+                        if (filtered.Any())
+                        {
+                            ResultsList.ItemsSource = filtered;
+                            ResultsList.Visibility = Visibility.Visible;
+                            return;
+                        }
+                    }
+                }
+            }
+
+            var redirect = SearchRedirects.TryParseRedirect(query);
+            if (redirect != null)
+            {
+                ResultsList.ItemsSource = new List<SearchResult> { redirect };
+                ResultsList.Visibility = Visibility.Visible;
+                return;
+            }
+
             var results = Indexer.Search(query);
 
             if (!results.Any())
             {
+
+
                 results.Add(new SearchResult
                 {
                     DisplayName = $"Search Google for \"{query}\"",
@@ -235,49 +324,64 @@ namespace WannaTool
 
             ResultsList.ItemsSource = results;
             ResultsList.Visibility = Visibility.Visible;
-
-            foreach (var item in results)
-            {
-                LoadIconForResult(item);
-            }
         }
 
-        private void ResultsList_MouseDoubleClick(object sender, MouseButtonEventArgs e)
-        {
-            if (ResultsList.SelectedItem == null) return;
-
-            var selected = ResultsList.SelectedItem as SearchResult;
-            if (selected == null) return;
-
-            if (selected.FullPath.StartsWith("http"))
-            {
-                Process.Start(new ProcessStartInfo(selected.FullPath)
-                {
-                    UseShellExecute = true
-                });
-            }
-            else
-            {
-                Process.Start(new ProcessStartInfo(selected.FullPath)
-                {
-                    UseShellExecute = true
-                });
-            }
-
-            this.Hide();
-        }
-
-        public class SearchResult
+        public class SearchResult : INotifyPropertyChanged
         {
             public string DisplayName { get; set; }
             public string FullPath { get; set; }
-            public ImageSource Icon { get; set; }
             public bool IsFolder { get; set; }
+
+            private ImageSource? _icon;
+            public ImageSource? Icon
+            {
+                get
+                {
+                    if (_icon == null)
+                        _icon = IconLoader.GetIcon(FullPath, IsFolder);
+                    return _icon;
+                }
+            }
 
             public override string ToString()
             {
                 return DisplayName;
             }
+
+            private bool _isRenaming;
+            public bool IsRenaming
+            {
+                get => _isRenaming;
+                set { _isRenaming = value; OnPropertyChanged(nameof(IsRenaming)); }
+            }
+
+            public event PropertyChangedEventHandler PropertyChanged;
+            protected void OnPropertyChanged(string name) =>
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+        }
+
+        private static readonly HttpClient _httpClient = new();
+
+        private void SafeSetClipboardText(string text)
+        {
+            int retries = 10;
+            int delay = 50;
+
+            while (retries > 0)
+            {
+                try
+                {
+                    Clipboard.SetText(text);
+                    return;
+                }
+                catch (System.Runtime.InteropServices.COMException)
+                {
+                    retries--;
+                    Thread.Sleep(delay);
+                }
+            }
+
+            MessageBox.Show("Impossible d'accéder au presse-papier. Réessaie ou ferme les applications qui pourraient le bloquer.", "Erreur", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
 
         [DllImport("user32.dll")]
@@ -338,23 +442,12 @@ namespace WannaTool
             WCA_ACCENT_POLICY = 19
         }
 
-        // Menu contextuel des différents éléments de la liste
-        /*
-        
-        <MenuItem Header="Ouvrir" Click="OpenFile_Click"/>
-                                    <MenuItem Header="Ouvrir l'emplacement" Click="OpenLocation_Click"/>
-                                    <MenuItem Header="Copier le chemin" Click="CopyPath_Click"/>
-                                    <MenuItem Header="Supprimer" Click="DeleteFile_Click"/>
-                                    <MenuItem Header="Renommer" Click="RenameFile_Click"/>
-                                    <MenuItem Header="Propriétés" Click="ShowProperties_Click"/>
-        
-        */
-
         private void OpenFile_Click(object sender, RoutedEventArgs e)
         {
             if (ResultsList.SelectedItem is SearchResult selected)
             {
                 Process.Start(new ProcessStartInfo(selected.FullPath) { UseShellExecute = true });
+                this.Hide();
             }
         }
         private void OpenLocation_Click(object sender, RoutedEventArgs e)
@@ -362,6 +455,7 @@ namespace WannaTool
             if (ResultsList.SelectedItem is SearchResult selected)
             {
                 Process.Start(new ProcessStartInfo("explorer.exe", $"/select,\"{selected.FullPath}\""));
+                this.Hide();
             }
         }
         private void CopyPath_Click(object sender, RoutedEventArgs e)
@@ -375,6 +469,7 @@ namespace WannaTool
         {
             if (ResultsList.SelectedItem is SearchResult selected)
             {
+                this.Hide();
                 if (MessageBox.Show($"Êtes-vous sûr de vouloir supprimer {selected.DisplayName} ?", "Confirmation", MessageBoxButton.YesNo, MessageBoxImage.Warning) == MessageBoxResult.Yes)
                 {
                     try
@@ -391,60 +486,151 @@ namespace WannaTool
         }
         private void RenameFile_Click(object sender, RoutedEventArgs e)
         {
-            if (ResultsList.SelectedItem is SearchResult selected)
+            this.Hide();
+            if (ResultsList.SelectedItem is not SearchResult selected) return;
+
+            string currentName = Path.GetFileName(selected.FullPath);
+            string input = Microsoft.VisualBasic.Interaction.InputBox("Entrez le nouveau nom :", "Renommer", currentName);
+
+            if (string.IsNullOrWhiteSpace(input)) return;
+
+            string newPath = Path.Combine(Path.GetDirectoryName(selected.FullPath), input);
+
+            try
             {
-                string newName = Microsoft.VisualBasic.Interaction.InputBox("Entrez le nouveau nom :", "Renommer le fichier", selected.DisplayName);
-                if (!string.IsNullOrEmpty(newName))
+                if (File.Exists(newPath) || Directory.Exists(newPath))
                 {
-                    try
-                    {
-                        string newPath = Path.Combine(Path.GetDirectoryName(selected.FullPath), newName);
-                        File.Move(selected.FullPath, newPath);
-                        MessageBox.Show($"{selected.DisplayName} a été renommé en {newName}.", "Succès", MessageBoxButton.OK, MessageBoxImage.Information);
-                    }
-                    catch (Exception ex)
-                    {
-                        MessageBox.Show($"Erreur lors du renommage : {ex.Message}", "Erreur", MessageBoxButton.OK, MessageBoxImage.Error);
-                    }
+                    MessageBox.Show("Un fichier ou dossier portant ce nom existe déjà.", "Conflit", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
                 }
+
+                File.Move(selected.FullPath, newPath);
+                selected.FullPath = newPath;
+                selected.DisplayName = input;
+
+                ResultsList.Items.Refresh();
+
+                Utils.ShowToast("Fichier renommé", $"{currentName} renommé en {input}");
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Erreur : {ex.Message}", "Renommage", MessageBoxButton.OK, MessageBoxImage.Error);
+                Utils.ShowToast("Erreur renommage", ex.Message, true);
             }
         }
+
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
+        public struct SHELLEXECUTEINFO
+        {
+            public int cbSize;
+            public uint fMask;
+            public IntPtr hwnd;
+            [MarshalAs(UnmanagedType.LPTStr)]
+            public string lpVerb;
+            [MarshalAs(UnmanagedType.LPTStr)]
+            public string lpFile;
+            [MarshalAs(UnmanagedType.LPTStr)]
+            public string lpParameters;
+            [MarshalAs(UnmanagedType.LPTStr)]
+            public string lpDirectory;
+            public int nShow;
+            public IntPtr hInstApp;
+            public IntPtr lpIDList;
+            [MarshalAs(UnmanagedType.LPTStr)]
+            public string lpClass;
+            public IntPtr hkeyClass;
+            public uint dwHotKey;
+            public IntPtr hIcon;
+            public IntPtr hProcess;
+        }
+
+        [DllImport("shell32.dll", CharSet = CharSet.Auto)]
+        static extern bool ShellExecuteEx(ref SHELLEXECUTEINFO lpExecInfo);
+
         private void ShowProperties_Click(object sender, RoutedEventArgs e)
         {
             if (ResultsList.SelectedItem is SearchResult selected)
             {
-                Process.Start(new ProcessStartInfo("explorer.exe", $"/select,\"{selected.FullPath}\""));
+                try
+                {
+                    SHELLEXECUTEINFO info = new SHELLEXECUTEINFO();
+                    info.cbSize = Marshal.SizeOf(info);
+                    info.lpFile = selected.FullPath;
+                    info.lpVerb = "properties";
+                    info.nShow = 5; // SW_SHOW
+                    info.fMask = 0x0000000C; // SEE_MASK_INVOKEIDLIST | SEE_MASK_FLAG_NO_UI
+
+                    ShellExecuteEx(ref info);
+                    this.Hide();
+
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"Erreur lors de l'ouverture des propriétés : {ex.Message}", "Erreur", MessageBoxButton.OK, MessageBoxImage.Error);
+                    Utils.ShowToast("Erreur", $"Erreur propriétés : {ex.Message}", true);
+                }
             }
         }
+
+        private async Task ExecuteSearchResult(SearchResult selected)
+        {
+            if (selected.FullPath == "!help")
+            {
+                string helpPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Docs", "index.html");
+                if (File.Exists(helpPath))
+                {
+                    Process.Start(new ProcessStartInfo(helpPath) { UseShellExecute = true });
+                    this.Hide();
+                }
+                else
+                {
+                    MessageBox.Show("Le fichier d'aide est introuvable.");
+                }
+                return;
+            }
+
+            if (selected.FullPath.StartsWith("http"))
+            {
+                Process.Start(new ProcessStartInfo(selected.FullPath) { UseShellExecute = true });
+            }
+            else
+            {
+                Process.Start(new ProcessStartInfo(selected.FullPath) { UseShellExecute = true });
+            }
+
+            ResultsList.SelectedItem = null;
+            this.Hide();
+        }
+
     }
 
     public class StringNullOrEmptyToVisibilityConverter : IValueConverter
-    {
-        public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
         {
-            if (value is string str && !string.IsNullOrEmpty(str))
+            public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
             {
-                return Visibility.Visible;
+                if (value is string str && !string.IsNullOrEmpty(str))
+                {
+                    return Visibility.Visible;
+                }
+                return Visibility.Collapsed;
             }
-            return Visibility.Collapsed;
+
+            public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+            {
+                throw new NotImplementedException();
+            }
         }
 
-        public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        public class StringNotNullOrEmptyToVisibilityConverter : IValueConverter
         {
-            throw new NotImplementedException();
-        }
-    }
+            public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+            {
+                return string.IsNullOrEmpty(value as string) ? Visibility.Visible : Visibility.Collapsed;
+            }
 
-    public class StringNotNullOrEmptyToVisibilityConverter : IValueConverter
-    {
-        public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
-        {
-            return string.IsNullOrEmpty(value as string) ? Visibility.Visible : Visibility.Collapsed;
+            public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+            {
+                throw new NotImplementedException();
+            }
         }
-
-        public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
-        {
-            throw new NotImplementedException();
-        }
-    }
 }
