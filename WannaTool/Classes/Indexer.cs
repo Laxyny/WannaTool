@@ -1,39 +1,36 @@
 using System;
 using System.IO;
-using System.IO.Compression;
-using System.Collections.Generic;
 using System.Linq;
-using System.Text.Json;
+using System.Collections.Generic;
 using System.Threading.Tasks;
-using Microsoft.Toolkit.Uwp.Notifications;
-using Timer = System.Timers.Timer;
+using LiteDB;
 
 namespace WannaTool
 {
     public static class Indexer
     {
-        // Struct léger pour l'index en mémoire
-        public readonly record struct IndexEntry(string DisplayName, string FullPath, bool IsFolder);
-        private static readonly string IndexFilePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "index.json.gz");
-        private static List<IndexEntry> _index = new List<IndexEntry>();
-        public static bool IsReady { get; set; } = false;
-
-        public static void MarkAsReady() => IsReady = true;
-
-        private static readonly Timer _saveTimer = new Timer(5000)
+        public class IndexEntry
         {
-            AutoReset = false
-        };
+            public int Id { get; set; }
+            public string DisplayName { get; set; } = "";
+            public string FullPath { get; set; } = "";
+            public bool IsFolder { get; set; }
+        }
+
+        private static readonly string DatabasePath =
+            Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "index.db");
+        private static readonly LiteDatabase Db;
+        private static readonly ILiteCollection<IndexEntry> Collection;
+        public static bool IsReady { get; private set; }
 
         static Indexer()
         {
-            // À la fin des 5 s sans nouvel appel, on sauve.
-            _saveTimer.Elapsed += async (s, e) => {
-                await SaveIndexAsync();
-            };
+            Db = new LiteDatabase(DatabasePath);
+            Collection = Db.GetCollection<IndexEntry>("entries");
+            Collection.EnsureIndex(e => e.FullPath, true);
+            Collection.EnsureIndex(e => e.DisplayName);
         }
 
-        // Extensions autorisées
         private static readonly HashSet<string> AllowedExtensions = new(StringComparer.OrdinalIgnoreCase)
         {
             ".exe", ".pdf", ".docx", ".xlsx", ".pptx", ".txt",
@@ -44,7 +41,6 @@ namespace WannaTool
             ".apk", ".iso", ".bat", ".cmd"
         };
 
-        // Extensions ignorées
         private static readonly HashSet<string> IgnoredExtensions = new(StringComparer.OrdinalIgnoreCase)
         {
             ".dll", ".sys", ".tmp", ".log", ".bak", ".old",
@@ -52,7 +48,6 @@ namespace WannaTool
             ".jsonl", ".lock", ".idx", ".thumb", ".mdmp", ".dmp"
         };
 
-        // Dossiers à ignorer
         private static readonly List<string> IgnoredFolders = new()
         {
             "C:\\Windows",
@@ -101,151 +96,39 @@ namespace WannaTool
             return true;
         }
 
-        // Initialisation de l'index
         public static async Task InitializeAsync()
         {
-            if (File.Exists(IndexFilePath))
-            { 
-                await LoadIndexAsync();
-                _ = SyncIndexAsync();
+            if (Collection.Count() == 0)
+            {
+                await BuildIndexAsync();
             }
             else
             {
-                await BuildIndexAsync();
-                await SaveIndexAsync();
+                _ = Task.Run(SyncIndexAsync);
             }
 
             StartWatching();
             IsReady = true;
         }
 
-        // Chargement de l'index depuis le fichier compressé
-        public static async Task LoadIndexAsync()
+        private static async Task BuildIndexAsync()
         {
-            try
-            {
-                using var fileStream = new FileStream(IndexFilePath, FileMode.Open, FileAccess.Read, FileShare.Read);
-                using var gzip = new GZipStream(fileStream, CompressionMode.Decompress);
-                _index = await JsonSerializer.DeserializeAsync<List<IndexEntry>>(gzip) ?? new();
-            }
-            catch (FileNotFoundException)
-            {
-                Console.WriteLine("Aucun index existant trouvé. Reconstruction...");
-                await BuildIndexAsync();
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Erreur lors du chargement de l'index: {ex.Message}");
-            }
-        }
+            Collection.DeleteAll();
+            Utils.ShowToast("Indexing started", "WannaTool is scanning your files...");
 
-        public static async Task SyncIndexAsync()
-        {
-            // Construire l'ensemble (HashSet) des chemins actuels
-            var roots = new[]
-            {
-                Environment.GetFolderPath(Environment.SpecialFolder.Desktop),
-                Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
-                GetDownloadsFolderPath()
-            };
-            var actualPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var roots = DriveInfo.GetDrives()
+                .Where(d => d.DriveType == DriveType.Fixed && d.IsReady)
+                .Select(d => d.RootDirectory.FullName);
 
             foreach (var root in roots)
             {
-                if (!Directory.Exists(root))
-                    continue;
-
-                // Dossiers
-                try
-                {
-                    foreach (var dir in Directory.EnumerateDirectories(root, "*", SearchOption.AllDirectories))
-                    {
-                        if (ShouldIndexFolder(dir))
-                            actualPaths.Add(dir);
-                    }
-                }
-                catch (UnauthorizedAccessException) { /* skip this branch */ }
-                catch (PathTooLongException) { /* skip */ }
-
-                // Fichiers
-                try
-                {
-                    foreach (var file in Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories))
-                    {
-                        if (ShouldIndexFile(file))
-                            actualPaths.Add(file);
-                    }
-                }
-                catch (UnauthorizedAccessException) { /* skip this branch */ }
-                catch (PathTooLongException) { /* skip */ }
+                await ScanDirectoryRecursiveAsync(root);
             }
 
-            // Supprimer les entrées obsolètes
-            _index.RemoveAll(e => !actualPaths.Contains(e.FullPath));
-
-            // Ajouter les nouveaux chemins
-            var knownPaths = new HashSet<string>(_index.Select(e => e.FullPath), StringComparer.OrdinalIgnoreCase);
-            foreach (var path in actualPaths)
-            {
-                if (knownPaths.Add(path))
-                {
-                    var name = Path.GetFileName(path);
-                    var isFolder = Directory.Exists(path);
-                    _index.Add(new IndexEntry(name, path, isFolder));
-                }
-            }
-
-            // Sauvegarde immédiate
-            await SaveIndexAsync();
+            Utils.ShowToast("Indexing completed", $"{Collection.Count()} entries indexed");
         }
 
-        // Efface l'index en mémoire
-        public static void ClearIndex()
-        {
-            _index.Clear();
-            IsReady = false;
-        }
-
-        // Sauvegarde de l'index dans un .gz
-        public static async Task SaveIndexAsync()
-        {
-            try
-            {
-                using var fileStream = new FileStream(IndexFilePath, FileMode.Create, FileAccess.Write, FileShare.None);
-                using var gzip = new GZipStream(fileStream, CompressionMode.Compress);
-                await JsonSerializer.SerializeAsync(gzip, _index);
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Erreur lors de la sauvegarde de l'index: {ex.Message}");
-            }
-        }
-
-        // Construction initiale de l'index
-        private static async Task BuildIndexAsync()
-        {
-            var rootFolders = new[]
-            {
-                Environment.GetFolderPath(Environment.SpecialFolder.Desktop),
-                Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
-                GetDownloadsFolderPath()
-            };
-            var entries = new List<IndexEntry>();
-            Utils.ShowToast("Indexing started", "WannaTool is scanning your files...");
-
-            foreach (var root in rootFolders)
-            {
-                if (Directory.Exists(root))
-                    await ScanDirectoryRecursiveAsync(root, entries);
-            }
-
-            _index = entries;
-            Utils.ShowToast("Indexing completed", $"{_index.Count} entrées indexées");
-            Console.WriteLine($"Indexation terminée avec {_index.Count} entrées.");
-        }
-
-        // Parcours récursif et ajout d'entrées légères
-        private static async Task ScanDirectoryRecursiveAsync(string currentFolder, List<IndexEntry> entries)
+        private static async Task ScanDirectoryRecursiveAsync(string currentFolder)
         {
             try
             {
@@ -253,16 +136,28 @@ namespace WannaTool
                     return;
 
                 var dirInfo = new DirectoryInfo(currentFolder);
-                entries.Add(new IndexEntry(dirInfo.Name, dirInfo.FullName, true));
+                Collection.Upsert(new IndexEntry
+                {
+                    DisplayName = dirInfo.Name,
+                    FullPath = dirInfo.FullName,
+                    IsFolder = true
+                });
 
                 foreach (var file in dirInfo.GetFiles())
                 {
                     if (ShouldIndexFile(file.FullName))
-                        entries.Add(new IndexEntry(file.Name, file.FullName, false));
+                    {
+                        Collection.Upsert(new IndexEntry
+                        {
+                            DisplayName = file.Name,
+                            FullPath = file.FullName,
+                            IsFolder = false
+                        });
+                    }
                 }
 
                 foreach (var dir in dirInfo.GetDirectories())
-                    await ScanDirectoryRecursiveAsync(dir.FullName, entries);
+                    await ScanDirectoryRecursiveAsync(dir.FullName);
             }
             catch (UnauthorizedAccessException) { }
             catch (Exception ex)
@@ -271,33 +166,109 @@ namespace WannaTool
             }
         }
 
+        private static async Task SyncIndexAsync()
+        {
+            var actualPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var roots = DriveInfo.GetDrives()
+                .Where(d => d.DriveType == DriveType.Fixed && d.IsReady)
+                .Select(d => d.RootDirectory.FullName);
+
+            foreach (var root in roots)
+            {
+                if (!Directory.Exists(root))
+                    continue;
+
+                try
+                {
+                    foreach (var dir in Directory.EnumerateDirectories(root, "*", SearchOption.AllDirectories))
+                    {
+                        if (ShouldIndexFolder(dir))
+                            actualPaths.Add(dir);
+                    }
+                }
+                catch (UnauthorizedAccessException) { }
+                catch (PathTooLongException) { }
+
+                try
+                {
+                    foreach (var file in Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories))
+                    {
+                        if (ShouldIndexFile(file))
+                            actualPaths.Add(file);
+                    }
+                }
+                catch (UnauthorizedAccessException) { }
+                catch (PathTooLongException) { }
+            }
+
+            var toRemove = Collection.FindAll().Where(e => !actualPaths.Contains(e.FullPath)).ToList();
+            foreach (var e in toRemove)
+                Collection.Delete(e.Id);
+
+            foreach (var path in actualPaths)
+            {
+                var isFolder = Directory.Exists(path);
+                var name = Path.GetFileName(path);
+                Collection.Upsert(new IndexEntry
+                {
+                    DisplayName = name,
+                    FullPath = path,
+                    IsFolder = isFolder
+                });
+            }
+        }
+
+        public static List<MainWindow.SearchResult> Search(string query)
+        {
+            var q = query.ToLowerInvariant();
+            return Collection.Query()
+                .Where(x => x.DisplayName.ToLower().Contains(q))
+                .Limit(20)
+                .ToList()
+                .Select(e => new MainWindow.SearchResult
+                {
+                    DisplayName = e.DisplayName,
+                    FullPath = e.FullPath,
+                    IsFolder = e.IsFolder
+                }).ToList();
+        }
+
+        public static List<MainWindow.SearchResult> Search(string query, IEnumerable<string> extensions)
+        {
+            var extSet = new HashSet<string>(extensions, StringComparer.OrdinalIgnoreCase);
+            var q = query.ToLowerInvariant();
+
+            return Collection.Query()
+                .Where(x => !x.IsFolder && extSet.Contains(Path.GetExtension(x.FullPath)) && x.DisplayName.ToLower().Contains(q))
+                .Limit(20)
+                .ToList()
+                .Select(e => new MainWindow.SearchResult
+                {
+                    DisplayName = e.DisplayName,
+                    FullPath = e.FullPath,
+                    IsFolder = e.IsFolder
+                }).ToList();
+        }
+
         private static List<FileSystemWatcher> _watchers = new();
 
-        // Surveillance des dossiers clés
         private static void StartWatching()
         {
-            var foldersToWatch = new[]
+            foreach (var drive in DriveInfo.GetDrives().Where(d => d.DriveType == DriveType.Fixed && d.IsReady))
             {
-                Environment.GetFolderPath(Environment.SpecialFolder.Desktop),
-                Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
-                GetDownloadsFolderPath()
-            };
-
-            foreach (var folder in foldersToWatch)
-            {
-                if (!Directory.Exists(folder)) continue;
-
-                var watcher = new FileSystemWatcher(folder)
+                try
                 {
-                    IncludeSubdirectories = true,
-                    EnableRaisingEvents = true
-                };
-
-                watcher.Created += (s, e) => AddFile(e.FullPath);
-                watcher.Deleted += (s, e) => RemoveFile(e.FullPath);
-                watcher.Renamed += (s, e) => UpdateFile(e.OldFullPath, e.FullPath);
-
-                _watchers.Add(watcher);
+                    var watcher = new FileSystemWatcher(drive.RootDirectory.FullName)
+                    {
+                        IncludeSubdirectories = true,
+                        EnableRaisingEvents = true
+                    };
+                    watcher.Created += (s, e) => AddFile(e.FullPath);
+                    watcher.Deleted += (s, e) => RemoveFile(e.FullPath);
+                    watcher.Renamed += (s, e) => UpdateFile(e.OldFullPath, e.FullPath);
+                    _watchers.Add(watcher);
+                }
+                catch { }
             }
         }
 
@@ -305,15 +276,16 @@ namespace WannaTool
         {
             try
             {
-                if (Directory.Exists(path))
+                var isFolder = Directory.Exists(path);
+                if (!isFolder && !File.Exists(path)) return;
+                if (!isFolder && !ShouldIndexFile(path)) return;
+
+                Collection.Upsert(new IndexEntry
                 {
-                    _index.Add(new IndexEntry(Path.GetFileName(path), path, true));
-                }
-                else if (File.Exists(path) && ShouldIndexFile(path))
-                {
-                    _index.Add(new IndexEntry(Path.GetFileName(path), path, false));
-                }
-                ScheduleSave();
+                    DisplayName = Path.GetFileName(path),
+                    FullPath = path,
+                    IsFolder = isFolder
+                });
             }
             catch (Exception ex)
             {
@@ -323,61 +295,19 @@ namespace WannaTool
 
         private static void RemoveFile(string path)
         {
-            _index.RemoveAll(e => e.FullPath.Equals(path, StringComparison.OrdinalIgnoreCase));
-            ScheduleSave();
+            var entry = Collection.FindOne(x => x.FullPath == path);
+            if (entry != null) Collection.Delete(entry.Id);
         }
 
         private static void UpdateFile(string oldPath, string newPath)
         {
             RemoveFile(oldPath);
             AddFile(newPath);
-            ScheduleSave();
         }
 
-        // Recherche : on recrée les objets WPF uniquement pour l'affichage
-        public static List<MainWindow.SearchResult> Search(string query)
+        public static void Dispose()
         {
-            return _index
-                .Where(e => e.DisplayName.Contains(query, StringComparison.OrdinalIgnoreCase))
-                .Take(20)
-                .Select(e => new MainWindow.SearchResult
-                {
-                    DisplayName = e.DisplayName,
-                    FullPath = e.FullPath,
-                    IsFolder = e.IsFolder,
-                })
-                .ToList();
+            Db.Dispose();
         }
-
-        public static List<MainWindow.SearchResult> Search(string query, IEnumerable<string> extensions)
-        {
-            var extSet = new HashSet<string>(extensions, StringComparer.OrdinalIgnoreCase);
-            return _index
-                .Where(e =>
-                {
-                    if (e.IsFolder) return false;
-                    var ext = Path.GetExtension(e.FullPath);
-                    return extSet.Contains(ext)
-                        && e.DisplayName.Contains(query, StringComparison.OrdinalIgnoreCase);
-                })
-                .Take(20)
-                .Select(e => new MainWindow.SearchResult
-                {
-                    DisplayName = e.DisplayName,
-                    FullPath = e.FullPath,
-                    IsFolder = false
-                })
-                .ToList();
-        }
-
-        private static void ScheduleSave()
-        {
-            // À chaque événement, on redémarre le timer
-            _saveTimer.Stop();
-            _saveTimer.Start();
-        }
-
-        private static string GetDownloadsFolderPath()
-            => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
     }
 }

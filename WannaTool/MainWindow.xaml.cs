@@ -268,11 +268,6 @@ namespace WannaTool
                 return;
             }
 
-            if (!Indexer.IsReady)
-            {
-                await Indexer.LoadIndexAsync();
-                Indexer.MarkAsReady();
-            }
 
             var colon = query.IndexOf(':');
             if (colon > 0 && colon < query.Length - 1)
