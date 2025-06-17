@@ -27,9 +27,9 @@ namespace WannaTool
             base.OnStartup(e);
         }
 
-        protected override async void OnExit(ExitEventArgs e)
+        protected override void OnExit(ExitEventArgs e)
         {
-            await Indexer.SaveIndexAsync();
+            Indexer.Dispose();
             base.OnExit(e);
         }
     }
