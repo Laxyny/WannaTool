@@ -32,6 +32,15 @@ namespace WannaTool
                 };
             }
 
+            if (query.Trim().Equals("!exit", StringComparison.OrdinalIgnoreCase))
+            {
+                return new SearchResult
+                {
+                    DisplayName = "Exit WannaTool",
+                    FullPath = "!exit"
+                };
+            }
+
             int colon = query.IndexOf(':');
             if (colon <= 0 || colon == query.Length - 1) return null;
 

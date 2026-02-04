@@ -5,7 +5,10 @@ using System.Windows.Input;
 using System.Windows.Interop;
 using NHotkey;
 using NHotkey.Wpf;
+using Application = System.Windows.Application;
 using MessageBox = System.Windows.MessageBox;
+using Forms = System.Windows.Forms;
+using Drawing = System.Drawing;
 
 namespace WannaTool
 {
@@ -17,6 +20,8 @@ namespace WannaTool
         private const int HOTKEY_ID = 9000;
 
         private MainViewModel _viewModel;
+        private Forms.NotifyIcon? _notifyIcon;
+        private bool _isExiting;
 
         public MainWindow()
         {
@@ -25,8 +30,30 @@ namespace WannaTool
             _viewModel = new MainViewModel();
             DataContext = _viewModel;
 
+            InitializeTrayIcon();
+
             this.Loaded += OnLoaded;
             this.Deactivated += (s, e) => this.Hide();
+            this.Closing += OnClosing;
+        }
+
+        private void InitializeTrayIcon()
+        {
+            _notifyIcon = new Forms.NotifyIcon
+            {
+                Icon = Drawing.SystemIcons.Application,
+                Visible = true,
+                Text = "WannaTool"
+            };
+
+            _notifyIcon.DoubleClick += (s, e) => ToggleVisibility();
+
+            var contextMenu = new Forms.ContextMenuStrip();
+            contextMenu.Items.Add("Open", null, (s, e) => ShowWindow());
+            contextMenu.Items.Add("-");
+            contextMenu.Items.Add("Exit", null, (s, e) => ExitApp());
+            
+            _notifyIcon.ContextMenuStrip = contextMenu;
         }
 
         private void OnLoaded(object sender, RoutedEventArgs e)
@@ -48,6 +75,27 @@ namespace WannaTool
             RegisterHotKey(helper.Handle, HOTKEY_ID, MOD_ALT, VK_SPACE);
 
             this.Hide();
+        }
+
+        private void OnClosing(object? sender, System.ComponentModel.CancelEventArgs e)
+        {
+            if (!_isExiting)
+            {
+                e.Cancel = true;
+                this.Hide();
+            }
+            else
+            {
+                _notifyIcon?.Dispose();
+                var helper = new WindowInteropHelper(this);
+                UnregisterHotKey(helper.Handle, HOTKEY_ID);
+            }
+        }
+
+        private void ExitApp()
+        {
+            _isExiting = true;
+            Application.Current.Shutdown();
         }
 
         private void OnCapturePrimary(object? sender, HotkeyEventArgs e)
@@ -80,19 +128,17 @@ namespace WannaTool
             }
             else
             {
-                this.Show();
-                this.Activate();
-                this.Topmost = true;
-                SearchBox.Focus();
-                SearchBox.SelectAll();
+                ShowWindow();
             }
         }
 
-        protected override void OnClosed(EventArgs e)
+        private void ShowWindow()
         {
-            var helper = new WindowInteropHelper(this);
-            UnregisterHotKey(helper.Handle, HOTKEY_ID);
-            base.OnClosed(e);
+            this.Show();
+            this.Activate();
+            this.Topmost = true;
+            SearchBox.Focus();
+            SearchBox.SelectAll();
         }
 
         [DllImport("user32.dll")]

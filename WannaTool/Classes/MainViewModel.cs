@@ -20,6 +20,7 @@ namespace WannaTool
         private string _searchText = "";
         private SearchResult? _selectedResult;
         private bool _isLoading;
+        private bool _hasResults;
         private CancellationTokenSource? _searchCts;
 
         public ObservableCollection<SearchResult> Results { get; } = new();
@@ -58,11 +59,25 @@ namespace WannaTool
             }
         }
 
+        public bool HasResults
+        {
+            get => _hasResults;
+            set
+            {
+                if (_hasResults != value)
+                {
+                    _hasResults = value;
+                    OnPropertyChanged(nameof(HasResults));
+                }
+            }
+        }
+
         public ICommand ExecuteCommand { get; }
         public ICommand NextResultCommand { get; }
         public ICommand PreviousResultCommand { get; }
         public ICommand CopyPathCommand { get; }
         public ICommand OpenLocationCommand { get; }
+        public ICommand ExitCommand { get; }
 
         public MainViewModel()
         {
@@ -71,6 +86,7 @@ namespace WannaTool
             PreviousResultCommand = new RelayCommand(_ => MoveSelection(-1));
             CopyPathCommand = new RelayCommand(CopyPath);
             OpenLocationCommand = new RelayCommand(OpenLocation);
+            ExitCommand = new RelayCommand(_ => Application.Current.Shutdown());
             
             _ = Indexer.InitializeAsync();
         }
@@ -97,7 +113,7 @@ namespace WannaTool
 
             if (string.IsNullOrWhiteSpace(query))
             {
-                Results.Clear();
+                UpdateResults(new List<SearchResult>());
                 return;
             }
 
@@ -163,6 +179,8 @@ namespace WannaTool
                     Results.Add(item);
                 }
 
+                HasResults = Results.Any();
+
                 if (Results.Any())
                 {
                     SelectedResult = Results.First();
@@ -197,6 +215,10 @@ namespace WannaTool
                      {
                          Process.Start(new ProcessStartInfo(helpPath) { UseShellExecute = true });
                      }
+                }
+                else if (result.FullPath == "!exit")
+                {
+                    Application.Current.Shutdown();
                 }
                 else
                 {
