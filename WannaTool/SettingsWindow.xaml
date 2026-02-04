@@ -286,6 +286,31 @@
                                     <CheckBox Grid.Column="1" IsChecked="{Binding AutoStart}" Style="{StaticResource ModernToggleSwitch}"/>
                                 </Grid>
                             </Border>
+
+                            <Border Style="{StaticResource Card}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                    </Grid.RowDefinitions>
+                                    
+                                    <StackPanel Grid.Column="0" Grid.Row="0" VerticalAlignment="Center">
+                                        <TextBlock Text="System monitoring" Style="{StaticResource SectionHeader}"/>
+                                        <TextBlock Text="Show CPU &amp; RAM usage in the main window." Style="{StaticResource SubText}"/>
+                                    </StackPanel>
+                                    <CheckBox Grid.Column="1" Grid.Row="0" IsChecked="{Binding EnableSystemMonitoring}" Style="{StaticResource ModernToggleSwitch}"/>
+
+                                    <StackPanel Grid.Column="0" Grid.ColumnSpan="2" Grid.Row="1" Margin="0,16,0,0" Orientation="Horizontal" 
+                                                Visibility="{Binding EnableSystemMonitoring, Converter={StaticResource BoolToVis}}">
+                                        <TextBlock Text="Update interval (s):" VerticalAlignment="Center" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,12,0"/>
+                                        <TextBox Text="{Binding SystemMonitorInterval, Mode=TwoWay}" Style="{StaticResource InlineInput}" Width="40" TextAlignment="Center"/>
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
                         </StackPanel>
 
                         <Grid Visibility="{Binding IsSearchVisible, Converter={StaticResource BoolToVis}}">

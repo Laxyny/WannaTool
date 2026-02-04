@@ -17,6 +17,8 @@ namespace WannaTool
     public class SettingsViewModel : INotifyPropertyChanged
     {
         private bool _autoStart;
+        private bool _enableSystemMonitoring;
+        private int _systemMonitorInterval = 2;
         private string _appName = "WannaTool";
         private string _appVersion = "v0.3.0-alpha";
         private string _author = "Kevin GREGOIRE - Nodasys";
@@ -59,6 +61,34 @@ namespace WannaTool
                     OnPropertyChanged(nameof(AutoStart));
                     SetAutoStart(value);
                     SettingsManager.Current.AutoStart = value;
+                    IsDirty = true;
+                }
+            }
+        }
+
+        public bool EnableSystemMonitoring
+        {
+            get => _enableSystemMonitoring;
+            set
+            {
+                if (_enableSystemMonitoring != value)
+                {
+                    _enableSystemMonitoring = value;
+                    OnPropertyChanged(nameof(EnableSystemMonitoring));
+                    IsDirty = true;
+                }
+            }
+        }
+
+        public int SystemMonitorInterval
+        {
+            get => _systemMonitorInterval;
+            set
+            {
+                if (_systemMonitorInterval != value)
+                {
+                    _systemMonitorInterval = value;
+                    OnPropertyChanged(nameof(SystemMonitorInterval));
                     IsDirty = true;
                 }
             }
@@ -127,6 +157,8 @@ namespace WannaTool
         private void LoadSettings()
         {
             _autoStart = SettingsManager.Current.AutoStart;
+            _enableSystemMonitoring = SettingsManager.Current.EnableSystemMonitoring;
+            _systemMonitorInterval = SettingsManager.Current.SystemMonitorInterval;
             
             Redirects.Clear();
             foreach (var r in SettingsManager.Current.Redirects)
@@ -191,11 +223,20 @@ namespace WannaTool
         private void SaveSettings()
         {
             SettingsManager.Current.AutoStart = AutoStart;
+            SettingsManager.Current.EnableSystemMonitoring = EnableSystemMonitoring;
+            SettingsManager.Current.SystemMonitorInterval = SystemMonitorInterval;
+            
             SettingsManager.Current.Redirects.Clear();
             SettingsManager.Current.Redirects.AddRange(Redirects);
             SettingsManager.Save();
             IsDirty = false;
             
+            SystemMetricsService.Instance.SetInterval(SystemMonitorInterval);
+            if (!EnableSystemMonitoring)
+            {
+                SystemMetricsService.Instance.Stop();
+            }
+
             MessageBox.Show("Settings saved successfully.", "WannaTool", MessageBoxButton.OK, MessageBoxImage.Information);
         }
 

@@ -15,6 +15,8 @@ namespace WannaTool
     public class ToolSettings
     {
         public bool AutoStart { get; set; } = false;
+        public bool EnableSystemMonitoring { get; set; } = false;
+        public int SystemMonitorInterval { get; set; } = 2;
         public List<WebRedirect> Redirects { get; set; } = new List<WebRedirect>();
 
         public ToolSettings()

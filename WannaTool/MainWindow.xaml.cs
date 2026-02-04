@@ -35,6 +35,7 @@ namespace WannaTool
             this.Loaded += OnLoaded;
             this.Deactivated += (s, e) => this.Hide();
             this.Closing += OnClosing;
+            this.IsVisibleChanged += (s, e) => _viewModel.OnVisibilityChanged(this.IsVisible);
             
             this.PreviewKeyDown += (s, e) =>
             {

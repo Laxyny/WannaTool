@@ -22,8 +22,22 @@ namespace WannaTool
         private bool _isLoading;
         private bool _hasResults;
         private CancellationTokenSource? _searchCts;
+        private string _systemMetricsText = "";
 
         public ObservableCollection<SearchResult> Results { get; } = new();
+
+        public string SystemMetricsText
+        {
+            get => _systemMetricsText;
+            set
+            {
+                if (_systemMetricsText != value)
+                {
+                    _systemMetricsText = value;
+                    OnPropertyChanged(nameof(SystemMetricsText));
+                }
+            }
+        }
 
         public string SearchText
         {
@@ -89,6 +103,38 @@ namespace WannaTool
             ExitCommand = new RelayCommand(_ => Application.Current.Shutdown());
             
             _ = Indexer.InitializeAsync();
+            
+            SystemMetricsService.Instance.SetInterval(SettingsManager.Current.SystemMonitorInterval);
+            SystemMetricsService.Instance.MetricsUpdated += OnMetricsUpdated;
+        }
+
+        public void OnVisibilityChanged(bool isVisible)
+        {
+            if (SettingsManager.Current.EnableSystemMonitoring)
+            {
+                if (isVisible) 
+                {
+                    SystemMetricsService.Instance.Start();
+                }
+                else 
+                {
+                    SystemMetricsService.Instance.Stop();
+                    SystemMetricsText = "";
+                }
+            }
+            else
+            {
+                SystemMetricsService.Instance.Stop();
+                SystemMetricsText = "";
+            }
+        }
+
+        private void OnMetricsUpdated(object? sender, SystemMetrics e)
+        {
+            Application.Current.Dispatcher.Invoke(() =>
+            {
+                SystemMetricsText = $"CPU: {e.CpuUsage:F0}%   RAM: {e.AppRamUsage / 1024 / 1024} MB";
+            });
         }
 
         private async void DebounceSearch()
