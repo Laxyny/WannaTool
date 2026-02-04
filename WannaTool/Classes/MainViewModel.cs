@@ -208,7 +208,12 @@ namespace WannaTool
 
             try
             {
-                if (result.FullPath == "!help")
+                if (result.FullPath == "!settings")
+                {
+                    var settingsWindow = new SettingsWindow();
+                    settingsWindow.Show();
+                }
+                else if (result.FullPath == "!help")
                 {
                      string helpPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Docs", "index.html");
                      if (File.Exists(helpPath))
