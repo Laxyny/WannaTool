@@ -9,7 +9,6 @@ using System.Runtime.InteropServices;
 
 static class IconLoader
 {
-    // Cache pour ne garder en mémoire qu’un nombre limité d’icônes
     private static readonly MemoryCache _cache = new MemoryCache("IconCache");
     private static readonly CacheItemPolicy _policy = new CacheItemPolicy
     {
@@ -18,12 +17,10 @@ static class IconLoader
 
     public static ImageSource? GetIcon(string path, bool isFolder)
     {
-        // clé de cache
         var key = (isFolder ? "D:" : "F:") + path.ToLowerInvariant();
         if (_cache.Get(key) is ImageSource imgCached)
             return imgCached;
 
-        // Flags et attributs
         const uint SHGFI_ICON = 0x100;
         const uint SHGFI_SMALLICON = 0x1;
         const uint SHGFI_USEFILEATTRIBUTES = 0x10;
@@ -35,7 +32,6 @@ static class IconLoader
                            ? FILE_ATTRIBUTE_DIRECTORY
                            : FILE_ATTRIBUTE_NORMAL;
 
-        // Appel P/Invoke
         SHFILEINFO shfi = new();
         IntPtr result = SHGetFileInfo(
             path,
@@ -44,11 +40,9 @@ static class IconLoader
             (uint)Marshal.SizeOf<SHFILEINFO>(),
             flags);
 
-        // Si on n’a pas récupéré d’icône, on renvoie null (ou une icône fallback)
         if (shfi.hIcon == IntPtr.Zero)
             return null;
 
-        // Création du BitmapSource et nettoyage
         var icon = Imaging.CreateBitmapSourceFromHIcon(
             shfi.hIcon,
             Int32Rect.Empty,

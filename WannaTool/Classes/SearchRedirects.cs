@@ -19,13 +19,13 @@ namespace WannaTool
             ["youtube"] = "https://www.youtube.com/results?search_query={0}"
         };
 
-        public static MainWindow.SearchResult? TryParseRedirect(string query)
+        public static SearchResult? TryParseRedirect(string query)
         {
             if (string.IsNullOrWhiteSpace(query)) return null;
 
             if (query.Trim().Equals("!help", StringComparison.OrdinalIgnoreCase))
             {
-                return new MainWindow.SearchResult
+                return new SearchResult
                 {
                     DisplayName = "WannaTool Help",
                     FullPath = "!help"
@@ -41,9 +41,9 @@ namespace WannaTool
             if (EngineUrls.TryGetValue(prefix, out var template) && !string.IsNullOrWhiteSpace(searchTerms))
             {
                 string url = string.Format(template, Uri.EscapeDataString(searchTerms));
-                return new MainWindow.SearchResult
+                return new SearchResult
                 {
-                    DisplayName = $"Recherche {prefix} : \"{searchTerms}\"",
+                    DisplayName = $"Redirect to {prefix} : \"{searchTerms}\"",
                     FullPath = url
                 };
             }

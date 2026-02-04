@@ -65,20 +65,16 @@ namespace WannaTool
                     offsetX += screen.Bounds.Width;
                 }
 
-                // Copier dans le presse-papier (WPF Clipboard, évite la fuite mémoire)
                 System.Windows.Clipboard.SetImage(bmp.ToBitmapSource());
 
-                // Enregistrer l'image
                 var filePath = SaveScreenshot(bmp);
-
-                // Notification
-                new ToastContentBuilder()
-                    .AddText("Capture enregistrée")
-                    .AddText(allScreens ? "Tous les écrans ont été capturés." : "Écran principal capturé.")
+                    new ToastContentBuilder()
+                    .AddText("Screenshot saved")
+                    .AddText(allScreens ? "All screens captured." : "Primary screen captured.")
                     .AddArgument("action", "openScreenshot")
                     .AddArgument("path", filePath)
                     .AddButton(new ToastButton()
-                        .SetContent("Ouvrir")
+                        .SetContent("Open")
                         .AddArgument("action", "openScreenshot")
                         .AddArgument("path", filePath)
                         .SetBackgroundActivation())
@@ -87,7 +83,7 @@ namespace WannaTool
             catch (Exception ex)
             {
                 new ToastContentBuilder()
-                    .AddText("Erreur lors de la capture d’écran")
+                    .AddText("Error capturing screenshot")
                     .AddText(ex.Message)
                     .Show();
             }

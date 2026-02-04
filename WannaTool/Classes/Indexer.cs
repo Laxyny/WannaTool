@@ -1,7 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Collections.Generic;
 using System.Threading.Tasks;
 using LiteDB;
 
@@ -14,300 +14,223 @@ namespace WannaTool
             public int Id { get; set; }
             public string DisplayName { get; set; } = "";
             public string FullPath { get; set; } = "";
+            public string LowerName { get; set; } = "";
             public bool IsFolder { get; set; }
+            public int Score { get; set; }
         }
 
-        private static readonly string DatabasePath =
-            Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "index.db");
-        private static readonly LiteDatabase Db;
-        private static readonly ILiteCollection<IndexEntry> Collection;
+        private static readonly string DatabasePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "index.db");
+        private static LiteDatabase? _db;
+        private static ILiteCollection<IndexEntry>? _collection;
+        
         public static bool IsReady { get; private set; }
 
-        static Indexer()
+        private static readonly List<string> TargetFolders = new()
         {
-            Db = new LiteDatabase(DatabasePath);
-            Collection = Db.GetCollection<IndexEntry>("entries");
-            Collection.EnsureIndex(e => e.FullPath, true);
-            Collection.EnsureIndex(e => e.DisplayName);
-        }
+            Environment.GetFolderPath(Environment.SpecialFolder.CommonStartMenu),
+            Environment.GetFolderPath(Environment.SpecialFolder.StartMenu),
+            Environment.GetFolderPath(Environment.SpecialFolder.Desktop),
+            Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads")
+        };
 
         private static readonly HashSet<string> AllowedExtensions = new(StringComparer.OrdinalIgnoreCase)
         {
-            ".exe", ".pdf", ".docx", ".xlsx", ".pptx", ".txt",
-            ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".mp4", ".avi", ".mkv", ".mov",
-            ".zip", ".rar", ".7z", ".tar", ".gz",
-            ".html", ".css", ".js", ".json", ".xml", ".csv",
-            ".psd", ".ai", ".blend", ".fbx", ".obj",
-            ".apk", ".iso", ".bat", ".cmd"
+            ".exe", ".lnk", ".pdf", ".docx", ".xlsx", ".pptx", ".txt",
+            ".jpg", ".png", ".mp4", ".zip", ".sln", ".cs", ".js", ".ts", ".html"
         };
 
-        private static readonly HashSet<string> IgnoredExtensions = new(StringComparer.OrdinalIgnoreCase)
+        private static readonly HashSet<string> IgnoredFolders = new(StringComparer.OrdinalIgnoreCase)
         {
-            ".dll", ".sys", ".tmp", ".log", ".bak", ".old",
-            ".cache", ".msi", ".dat", ".bin", ".db", ".db-shm", ".db-wal",
-            ".jsonl", ".lock", ".idx", ".thumb", ".mdmp", ".dmp"
+            "node_modules", ".git", "bin", "obj", ".vs", "AppData"
         };
-
-        private static readonly List<string> IgnoredFolders = new()
-        {
-            "C:\\Windows",
-            "C:\\Program Files",
-            "C:\\Program Files (x86)",
-            "C:\\ProgramData",
-            "C:\\$Recycle.Bin",
-            "C:\\System Volume Information",
-            "C:\\Users\\Default",
-            "AppData",
-            "node_modules",
-            ".git",
-            "\\bin",
-            "\\obj",
-            "\\.vs"
-        };
-
-        private static bool ShouldIndexFile(string filePath)
-        {
-            try
-            {
-                var extension = Path.GetExtension(filePath);
-                if (string.IsNullOrEmpty(extension)) return false;
-                if (IgnoredExtensions.Contains(extension)) return false;
-                if (!AllowedExtensions.Contains(extension)) return false;
-                foreach (var ignored in IgnoredFolders)
-                {
-                    if (filePath.Contains(ignored, StringComparison.OrdinalIgnoreCase))
-                        return false;
-                }
-                return true;
-            }
-            catch
-            {
-                return false;
-            }
-        }
-
-        private static bool ShouldIndexFolder(string folderPath)
-        {
-            foreach (var ignored in IgnoredFolders)
-            {
-                if (folderPath.Contains(ignored, StringComparison.OrdinalIgnoreCase))
-                    return false;
-            }
-            return true;
-        }
 
         public static async Task InitializeAsync()
         {
-            if (Collection.Count() == 0)
-            {
-                await BuildIndexAsync();
-            }
-            else
-            {
-                _ = Task.Run(SyncIndexAsync);
-            }
+            if (_db != null) return;
 
-            StartWatching();
-            IsReady = true;
+            try 
+            {
+                _db = new LiteDatabase($"Filename={DatabasePath};Connection=Shared");
+                _collection = _db.GetCollection<IndexEntry>("entries");
+                
+                _collection.EnsureIndex(x => x.LowerName);
+                
+                if (_collection.Count() == 0)
+                {
+                    await BuildIndexAsync();
+                }
+                else
+                {
+                    _ = Task.Run(BuildIndexAsync);
+                }
+
+                IsReady = true;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Indexer Init Error: {ex.Message}");
+            }
         }
 
-        private static async Task BuildIndexAsync()
-        {
-            Collection.DeleteAll();
-            Utils.ShowToast("Indexing started", "WannaTool is scanning your files...");
-
-            var roots = DriveInfo.GetDrives()
-                .Where(d => d.DriveType == DriveType.Fixed && d.IsReady)
-                .Select(d => d.RootDirectory.FullName);
-
-            foreach (var root in roots)
-            {
-                await ScanDirectoryRecursiveAsync(root);
-            }
-
-            Utils.ShowToast("Indexing completed", $"{Collection.Count()} entries indexed");
-        }
-
-        private static async Task ScanDirectoryRecursiveAsync(string currentFolder)
+        public static async Task BuildIndexAsync()
         {
             try
             {
-                if (!ShouldIndexFolder(currentFolder))
-                    return;
+                var entries = new List<IndexEntry>();
 
-                var dirInfo = new DirectoryInfo(currentFolder);
-                Collection.Upsert(new IndexEntry
+                foreach (var root in TargetFolders)
                 {
-                    DisplayName = dirInfo.Name,
-                    FullPath = dirInfo.FullName,
-                    IsFolder = true
-                });
-
-                foreach (var file in dirInfo.GetFiles())
-                {
-                    if (ShouldIndexFile(file.FullName))
+                    if (Directory.Exists(root))
                     {
-                        Collection.Upsert(new IndexEntry
+                        await ScanDirectoryRecursiveAsync(root, entries);
+                    }
+                }
+
+                if (_collection != null)
+                {
+                    _collection.DeleteAll();
+                    _collection.InsertBulk(entries);
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"BuildIndex Error: {ex.Message}");
+            }
+        }
+
+        private static Task ScanDirectoryRecursiveAsync(string dirPath, List<IndexEntry> entries)
+        {
+            return Task.Run(() =>
+            {
+                try
+                {
+                    var dirInfo = new DirectoryInfo(dirPath);
+                    if (IgnoredFolders.Contains(dirInfo.Name)) return;
+
+                    entries.Add(new IndexEntry
+                    {
+                        DisplayName = dirInfo.Name,
+                        FullPath = dirInfo.FullName,
+                        LowerName = dirInfo.Name.ToLowerInvariant(),
+                        IsFolder = true,
+                        Score = 10
+                    });
+
+                    foreach (var file in dirInfo.EnumerateFiles())
+                    {
+                        if (AllowedExtensions.Contains(file.Extension))
                         {
-                            DisplayName = file.Name,
+                            int score = 1;
+                            if (file.Extension.Equals(".lnk", StringComparison.OrdinalIgnoreCase) || 
+                                file.Extension.Equals(".exe", StringComparison.OrdinalIgnoreCase))
+                            {
+                                score = 100;
+                            }
+
+                            entries.Add(new IndexEntry
+                            {
+                                DisplayName = Path.GetFileNameWithoutExtension(file.Name),
+                                FullPath = file.FullName,
+                                LowerName = Path.GetFileNameWithoutExtension(file.Name).ToLowerInvariant(),
+                                IsFolder = false,
+                                Score = score
+                            });
+                        }
+                    }
+
+                    foreach (var subDir in dirInfo.EnumerateDirectories())
+                    {
+                        if (!IgnoredFolders.Contains(subDir.Name))
+                        {
+                            ScanDirInternal(subDir, entries);
+                        }
+                    }
+                }
+                catch (UnauthorizedAccessException) { }
+                catch (Exception) { }
+            });
+        }
+
+        private static void ScanDirInternal(DirectoryInfo dirInfo, List<IndexEntry> entries)
+        {
+            try
+            {
+                foreach (var file in dirInfo.EnumerateFiles())
+                {
+                    if (AllowedExtensions.Contains(file.Extension))
+                    {
+                        int score = 1;
+                        if (file.Extension.Equals(".lnk", StringComparison.OrdinalIgnoreCase) || 
+                            file.Extension.Equals(".exe", StringComparison.OrdinalIgnoreCase))
+                        {
+                            score = 100;
+                        }
+
+                        entries.Add(new IndexEntry
+                        {
+                            DisplayName = Path.GetFileNameWithoutExtension(file.Name),
                             FullPath = file.FullName,
-                            IsFolder = false
+                            LowerName = Path.GetFileNameWithoutExtension(file.Name).ToLowerInvariant(),
+                            IsFolder = false,
+                            Score = score
                         });
                     }
                 }
 
-                foreach (var dir in dirInfo.GetDirectories())
-                    await ScanDirectoryRecursiveAsync(dir.FullName);
-            }
-            catch (UnauthorizedAccessException) { }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Erreur lors du scan du dossier {currentFolder}: {ex.Message}");
-            }
-        }
-
-        private static async Task SyncIndexAsync()
-        {
-            var actualPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            var roots = DriveInfo.GetDrives()
-                .Where(d => d.DriveType == DriveType.Fixed && d.IsReady)
-                .Select(d => d.RootDirectory.FullName);
-
-            foreach (var root in roots)
-            {
-                if (!Directory.Exists(root))
-                    continue;
-
-                try
+                foreach (var subDir in dirInfo.EnumerateDirectories())
                 {
-                    foreach (var dir in Directory.EnumerateDirectories(root, "*", SearchOption.AllDirectories))
+                    if (!IgnoredFolders.Contains(subDir.Name))
                     {
-                        if (ShouldIndexFolder(dir))
-                            actualPaths.Add(dir);
+                        ScanDirInternal(subDir, entries);
                     }
                 }
-                catch (UnauthorizedAccessException) { }
-                catch (PathTooLongException) { }
-
-                try
-                {
-                    foreach (var file in Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories))
-                    {
-                        if (ShouldIndexFile(file))
-                            actualPaths.Add(file);
-                    }
-                }
-                catch (UnauthorizedAccessException) { }
-                catch (PathTooLongException) { }
             }
-
-            var toRemove = Collection.FindAll().Where(e => !actualPaths.Contains(e.FullPath)).ToList();
-            foreach (var e in toRemove)
-                Collection.Delete(e.Id);
-
-            foreach (var path in actualPaths)
-            {
-                var isFolder = Directory.Exists(path);
-                var name = Path.GetFileName(path);
-                Collection.Upsert(new IndexEntry
-                {
-                    DisplayName = name,
-                    FullPath = path,
-                    IsFolder = isFolder
-                });
-            }
+            catch { }
         }
 
-        public static List<MainWindow.SearchResult> Search(string query)
+        public static List<SearchResult> Search(string query)
         {
-            var q = query.ToLowerInvariant();
-            return Collection.Query()
-                .Where(x => x.DisplayName.ToLower().Contains(q))
-                .Limit(20)
-                .ToList()
-                .Select(e => new MainWindow.SearchResult
+            if (_collection == null || string.IsNullOrWhiteSpace(query)) return new List<SearchResult>();
+
+            var q = query.Trim().ToLowerInvariant();
+            
+            return _collection.Find(x => x.LowerName.Contains(q))
+                .OrderByDescending(x => x.Score)
+                .ThenBy(x => x.DisplayName.Length)
+                .Take(15)
+                .Select(e => new SearchResult
                 {
                     DisplayName = e.DisplayName,
                     FullPath = e.FullPath,
                     IsFolder = e.IsFolder
-                }).ToList();
+                })
+                .ToList();
         }
 
-        public static List<MainWindow.SearchResult> Search(string query, IEnumerable<string> extensions)
+        public static List<SearchResult> Search(string query, IEnumerable<string> extensions)
         {
+            if (_collection == null) return new List<SearchResult>();
+
             var extSet = new HashSet<string>(extensions, StringComparer.OrdinalIgnoreCase);
-            var q = query.ToLowerInvariant();
+            var q = query.Trim().ToLowerInvariant();
 
-            return Collection.Query()
-                .Where(x => !x.IsFolder && extSet.Contains(Path.GetExtension(x.FullPath)) && x.DisplayName.ToLower().Contains(q))
-                .Limit(20)
-                .ToList()
-                .Select(e => new MainWindow.SearchResult
+            return _collection.Find(x => x.LowerName.Contains(q))
+                .Where(x => !x.IsFolder && extSet.Contains(Path.GetExtension(x.FullPath)))
+                .OrderBy(x => x.DisplayName.Length)
+                .Take(15)
+                .Select(e => new SearchResult
                 {
                     DisplayName = e.DisplayName,
                     FullPath = e.FullPath,
                     IsFolder = e.IsFolder
-                }).ToList();
-        }
-
-        private static List<FileSystemWatcher> _watchers = new();
-
-        private static void StartWatching()
-        {
-            foreach (var drive in DriveInfo.GetDrives().Where(d => d.DriveType == DriveType.Fixed && d.IsReady))
-            {
-                try
-                {
-                    var watcher = new FileSystemWatcher(drive.RootDirectory.FullName)
-                    {
-                        IncludeSubdirectories = true,
-                        EnableRaisingEvents = true
-                    };
-                    watcher.Created += (s, e) => AddFile(e.FullPath);
-                    watcher.Deleted += (s, e) => RemoveFile(e.FullPath);
-                    watcher.Renamed += (s, e) => UpdateFile(e.OldFullPath, e.FullPath);
-                    _watchers.Add(watcher);
-                }
-                catch { }
-            }
-        }
-
-        private static void AddFile(string path)
-        {
-            try
-            {
-                var isFolder = Directory.Exists(path);
-                if (!isFolder && !File.Exists(path)) return;
-                if (!isFolder && !ShouldIndexFile(path)) return;
-
-                Collection.Upsert(new IndexEntry
-                {
-                    DisplayName = Path.GetFileName(path),
-                    FullPath = path,
-                    IsFolder = isFolder
-                });
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Erreur ajout fichier {path}: {ex.Message}");
-            }
-        }
-
-        private static void RemoveFile(string path)
-        {
-            var entry = Collection.FindOne(x => x.FullPath == path);
-            if (entry != null) Collection.Delete(entry.Id);
-        }
-
-        private static void UpdateFile(string oldPath, string newPath)
-        {
-            RemoveFile(oldPath);
-            AddFile(newPath);
+                })
+                .ToList();
         }
 
         public static void Dispose()
         {
-            Db.Dispose();
+            _db?.Dispose();
         }
     }
 }
