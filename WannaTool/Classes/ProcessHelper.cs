@@ -1,13 +1,12 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
-using System.Windows.Media.Imaging;
+using System.Windows.Media;
 
 namespace WannaTool
 {
@@ -32,13 +31,14 @@ namespace WannaTool
                         string name = p.ProcessName;
                         long ramMb = p.WorkingSet64 / 1024 / 1024;
                         string title = !string.IsNullOrEmpty(p.MainWindowTitle) ? $" - {p.MainWindowTitle}" : "";
+                        string? path = GetProcessPath(p);
 
                         results.Add(new SearchResult
                         {
                             DisplayName = $"{name} (PID: {p.Id}) - {ramMb} MB RAM{title}",
                             FullPath = killMode ? $"kill:{p.Id}|{name}" : $"focus:{p.Id}",
                             IsFolder = false,
-                            Icon = GetProcessIcon(p)
+                            Icon = !string.IsNullOrEmpty(path) ? IconLoader.GetIcon(path, false) : null
                         });
                     }
                     catch {}
@@ -65,13 +65,14 @@ namespace WannaTool
                     {
                         string name = p.ProcessName;
                         long ramMb = p.WorkingSet64 / 1024 / 1024;
+                        string? path = GetProcessPath(p);
 
                         results.Add(new SearchResult
                         {
                             DisplayName = $"Kill: {name} (PID: {p.Id}) - {ramMb} MB RAM",
                             FullPath = $"kill:{p.Id}|{name}",
                             IsFolder = false,
-                            Icon = GetProcessIcon(p)
+                            Icon = !string.IsNullOrEmpty(path) ? IconLoader.GetIcon(path, false) : null
                         });
                     }
                     catch { }
@@ -79,6 +80,18 @@ namespace WannaTool
             }
             catch { }
             return results;
+        }
+
+        private static string? GetProcessPath(Process p)
+        {
+            try
+            {
+                return p.MainModule?.FileName;
+            }
+            catch 
+            {
+                return null;
+            }
         }
 
         public static void KillProcess(int pid)
@@ -102,26 +115,6 @@ namespace WannaTool
                 }
             }
             catch { }
-        }
-
-        private static BitmapSource? GetProcessIcon(Process p)
-        {
-            try
-            {
-                if (p.MainModule?.FileName is string path && File.Exists(path))
-                {
-                    using var icon = Icon.ExtractAssociatedIcon(path);
-                    if (icon != null)
-                    {
-                        return Imaging.CreateBitmapSourceFromHIcon(
-                            icon.Handle,
-                            Int32Rect.Empty,
-                            BitmapSizeOptions.FromEmptyOptions());
-                    }
-                }
-            }
-            catch { }
-            return null;
         }
 
         [DllImport("user32.dll")]

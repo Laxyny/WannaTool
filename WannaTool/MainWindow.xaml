@@ -155,7 +155,7 @@
                                     <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
                                 
-                                <Image Grid.Column="0" Source="{Binding Icon}" Width="24" Height="24" Margin="0,0,12,0"/>
+                                <Image Grid.Column="0" Source="{Binding Icon}" Width="24" Height="24" Margin="0,0,12,0" RenderOptions.BitmapScalingMode="HighQuality"/>
                                 
                                 <StackPanel Grid.Column="1" VerticalAlignment="Center">
                                     <TextBlock Text="{Binding DisplayName}" FontSize="15" Foreground="#EEEEEE" FontWeight="Medium"/>
