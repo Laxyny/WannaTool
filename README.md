@@ -54,4 +54,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Credits
 
-Developed and maintained by [Kevin Gregoire](https://github.com/laxyny).
+Developed and maintained by [Kevin Gregoire - Nodasys](https://github.com/laxyny).

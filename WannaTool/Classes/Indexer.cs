@@ -19,7 +19,9 @@ namespace WannaTool
             public int Score { get; set; }
         }
 
-        private static readonly string DatabasePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "index.db");
+        private static readonly string AppDataFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "WannaTool");
+        private static readonly string DatabasePath = Path.Combine(AppDataFolder, "index.db");
+        
         private static LiteDatabase? _db;
         private static ILiteCollection<IndexEntry>? _collection;
         
@@ -51,6 +53,11 @@ namespace WannaTool
 
             try 
             {
+                if (!Directory.Exists(AppDataFolder))
+                {
+                    Directory.CreateDirectory(AppDataFolder);
+                }
+
                 _db = new LiteDatabase($"Filename={DatabasePath};Connection=Shared");
                 _collection = _db.GetCollection<IndexEntry>("entries");
                 
@@ -58,11 +65,10 @@ namespace WannaTool
                 
                 if (_collection.Count() == 0)
                 {
-                    await BuildIndexAsync();
+                    await PerformScanningAsync();
                 }
                 else
                 {
-                    _ = Task.Run(BuildIndexAsync);
                 }
 
                 IsReady = true;
@@ -74,6 +80,27 @@ namespace WannaTool
         }
 
         public static async Task BuildIndexAsync()
+        {
+            try
+            {
+                _db?.Dispose();
+                _db = null;
+
+                if (File.Exists(DatabasePath))
+                {
+                    try { File.Delete(DatabasePath); } catch { }
+                }
+
+                await InitializeAsync();
+                await PerformScanningAsync();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"BuildIndex Error: {ex.Message}");
+            }
+        }
+
+        private static async Task PerformScanningAsync()
         {
             try
             {
@@ -89,13 +116,13 @@ namespace WannaTool
 
                 if (_collection != null)
                 {
-                    _collection.DeleteAll();
+                    _collection.DeleteAll(); 
                     _collection.InsertBulk(entries);
                 }
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"BuildIndex Error: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"Scanning Error: {ex.Message}");
             }
         }
 
