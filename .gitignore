@@ -16,6 +16,7 @@ obj/
 
 # Visual Studio Code settings
 .vscode/
+.vs/
 
 # Rider settings
 .idea/

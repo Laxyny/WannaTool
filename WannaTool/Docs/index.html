@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>WannaTool help page</title>
+    <link rel="stylesheet" href="style.css" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+</head>
+<body>
+    <header>
+        <h1>WannaTool</h1>
+        <p class="subtitle">The ultimate power user launcher for Windows</p>
+    </header>
+
+    <main>
+        <section>
+            <h2>
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+                Web search & redirects
+            </h2>
+            <ul>
+                <li>
+                    <span class="command">google: query</span>
+                    <span class="description">Google search</span>
+                </li>
+                <li>
+                    <span class="command">bing: query</span>
+                    <span class="description">Bing search</span>
+                </li>
+                <li>
+                    <span class="command">ddg: query</span>
+                    <span class="description">DuckDuckGo</span>
+                </li>
+                 <li>
+                    <span class="command">brave: query</span>
+                    <span class="description">Brave search</span>
+                </li>
+                <li>
+                    <span class="command">youtube: query</span>
+                    <span class="description">YouTube</span>
+                </li>
+                <li>
+                    <span class="command">wiki: query</span>
+                    <span class="description">Wikipedia</span>
+                </li>
+                <li>
+                    <span class="command">stackoverflow: query</span>
+                    <span class="description">Stack overflow</span>
+                </li>
+            </ul>
+        </section>
+
+        <section>
+            <h2>
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                </svg>
+                File filters
+            </h2>
+            <ul>
+                <li>
+                    <span class="command">exe: name</span>
+                    <span class="description">Apps (.exe, .lnk)</span>
+                </li>
+                <li>
+                    <span class="command">pdf: name</span>
+                    <span class="description">PDF documents</span>
+                </li>
+                <li>
+                    <span class="command">doc: name</span>
+                    <span class="description">Word / Text docs</span>
+                </li>
+                <li>
+                    <span class="command">img: name</span>
+                    <span class="description">Images</span>
+                </li>
+                <li>
+                    <span class="command">code: name</span>
+                    <span class="description">Source code</span>
+                </li>
+            </ul>
+        </section>
+
+        <section>
+            <h2>
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                </svg>
+                System & screenshots
+            </h2>
+            <ul>
+                <li>
+                    <span><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>F5</kbd></span>
+                    <span class="description">Capture primary screen</span>
+                </li>
+                <li>
+                    <span><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>F6</kbd></span>
+                    <span class="description">Capture all screens</span>
+                </li>
+                <li>
+                    <span class="command">!help</span>
+                    <span class="description">Open help</span>
+                </li>
+                <li>
+                    <span class="command">!exit</span>
+                    <span class="description">Exit WannaTool</span>
+                </li>
+            </ul>
+            <div style="margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid var(--card-border); font-size: 0.85rem; color: var(--text-secondary);">
+                Screenshots saved to: <br>
+                <code style="color: #a5b4fc;">Pictures/WannaTool_Captures/</code>
+            </div>
+        </section>
+
+        <section>
+            <h2>
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+                Coming soon
+            </h2>
+            <ul>
+                <li>
+                    <span class="description">Window splitter</span>
+                </li>
+                <li>
+                    <span class="description">Clipboard history</span>
+                </li>
+                <li>
+                    <span class="description">Favorites</span>
+                </li>
+                <li>
+                    <span class="description">Themes</span>
+                </li>
+            </ul>
+        </section>
+    </main>
+
+    <footer>
+        <p>WannaTool &copy; <span id="current-year"></span> &bull; Kevin GREGOIRE / Nodasys &bull; Open Source Project</p>
+        <script>
+            document.getElementById('current-year').textContent = new Date().getFullYear();
+        </script>
+    </footer>
+</body>
+</html>
