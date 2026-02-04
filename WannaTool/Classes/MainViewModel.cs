@@ -170,6 +170,28 @@ namespace WannaTool
                 return;
             }
 
+            if (query.Equals("!top", StringComparison.OrdinalIgnoreCase))
+            {
+                UpdateResults(ProcessHelper.GetTopProcesses(10, killMode: false));
+                return;
+            }
+
+            if (query.Equals("!kill", StringComparison.OrdinalIgnoreCase))
+            {
+                UpdateResults(ProcessHelper.GetTopProcesses(10, killMode: true));
+                return;
+            }
+
+            if (query.StartsWith("!kill ", StringComparison.OrdinalIgnoreCase))
+            {
+                var term = query.Substring(6).Trim();
+                if (!string.IsNullOrEmpty(term))
+                {
+                    UpdateResults(ProcessHelper.GetKillCandidates(term));
+                    return;
+                }
+            }
+
             var colon = query.IndexOf(':');
             List<SearchResult> results;
 
@@ -254,7 +276,43 @@ namespace WannaTool
 
             try
             {
-                if (result.FullPath == "!settings")
+                if (result.FullPath.StartsWith("kill:"))
+                {
+                    var parts = result.FullPath.Substring(5).Split('|');
+                    if (int.TryParse(parts[0], out int pid))
+                    {
+                        var name = parts.Length > 1 ? parts[1] : "this process";
+                        var confirm = MessageBox.Show($"Are you sure you want to terminate '{name}' (PID: {pid})?", 
+                            "Confirm Kill", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+                        
+                        if (confirm == MessageBoxResult.Yes)
+                        {
+                            try 
+                            { 
+                                ProcessHelper.KillProcess(pid); 
+                                MessageBox.Show("Process terminated.", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
+                            }
+                            catch (Exception ex)
+                            {
+                                MessageBox.Show($"Failed to kill process: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                            }
+                        }
+                    }
+                    Application.Current.MainWindow.Hide();
+                    SearchText = "";
+                    return;
+                }
+                else if (result.FullPath.StartsWith("focus:"))
+                {
+                    if (int.TryParse(result.FullPath.Substring(6), out int pid))
+                    {
+                        ProcessHelper.FocusProcess(pid);
+                    }
+                    Application.Current.MainWindow.Hide();
+                    SearchText = "";
+                    return;
+                }
+                else if (result.FullPath == "!settings")
                 {
                     var settingsWindow = new SettingsWindow();
                     settingsWindow.Show();
