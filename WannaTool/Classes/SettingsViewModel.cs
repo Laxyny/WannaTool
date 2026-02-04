@@ -1,5 +1,6 @@
 using System;
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
@@ -8,8 +9,8 @@ using System.Reflection;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
-using MessageBox = System.Windows.MessageBox;
 using Microsoft.Win32;
+using MessageBox = System.Windows.MessageBox;
 
 namespace WannaTool
 {
@@ -17,9 +18,10 @@ namespace WannaTool
     {
         private bool _autoStart;
         private string _appName = "WannaTool";
-        private string _appVersion = "v0.2.0-alpha";
-        private string _author = "Kevin GREGOIRE";
+        private string _appVersion = "v0.3.0-alpha";
+        private string _author = "Kevin GREGOIRE - Nodasys";
         private string _repoUrl = "https://github.com/Laxyny/WannaTool";
+        private bool _isDirty;
         
         private string _currentSection = "General";
         public string CurrentSection
@@ -57,7 +59,20 @@ namespace WannaTool
                     OnPropertyChanged(nameof(AutoStart));
                     SetAutoStart(value);
                     SettingsManager.Current.AutoStart = value;
-                    SettingsManager.Save();
+                    IsDirty = true;
+                }
+            }
+        }
+
+        public bool IsDirty
+        {
+            get => _isDirty;
+            set
+            {
+                if (_isDirty != value)
+                {
+                    _isDirty = value;
+                    OnPropertyChanged(nameof(IsDirty));
                 }
             }
         }
@@ -72,6 +87,8 @@ namespace WannaTool
         public ICommand RemoveRedirectCommand { get; }
         public ICommand ReindexCommand { get; }
         public ICommand OpenRepoCommand { get; }
+        public ICommand OpenHelpCommand { get; }
+        public ICommand SaveCommand { get; }
 
         public SettingsViewModel()
         {
@@ -81,17 +98,42 @@ namespace WannaTool
             RemoveRedirectCommand = new RelayCommand(RemoveRedirect);
             ReindexCommand = new RelayCommand(Reindex);
             OpenRepoCommand = new RelayCommand(_ => Process.Start(new ProcessStartInfo(RepoUrl) { UseShellExecute = true }));
+            OpenHelpCommand = new RelayCommand(_ => OpenHelp());
+            SaveCommand = new RelayCommand(_ => SaveSettings(), _ => IsDirty);
+            
+            Redirects.CollectionChanged += (s, e) => IsDirty = true;
+        }
+
+        private void OpenHelp()
+        {
+            try
+            {
+                string helpPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Docs", "index.html");
+                if (File.Exists(helpPath))
+                {
+                    Process.Start(new ProcessStartInfo(helpPath) { UseShellExecute = true });
+                }
+                else
+                {
+                    MessageBox.Show("Help file not found.", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Could not open help: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
         }
 
         private void LoadSettings()
         {
-            _autoStart = CheckAutoStart();
+            _autoStart = SettingsManager.Current.AutoStart;
             
             Redirects.Clear();
             foreach (var r in SettingsManager.Current.Redirects)
             {
                 Redirects.Add(r);
             }
+            IsDirty = false;
         }
 
         private bool CheckAutoStart()
@@ -133,19 +175,28 @@ namespace WannaTool
         private void AddRedirect(object? parameter)
         {
             var newRedirect = new WebRedirect { Name = "New Search", Trigger = "new", UrlTemplate = "https://example.com?q={0}" };
-            SettingsManager.Current.Redirects.Add(newRedirect);
             Redirects.Add(newRedirect);
-            SettingsManager.Save();
+            IsDirty = true;
         }
 
         private void RemoveRedirect(object? parameter)
         {
             if (parameter is WebRedirect r)
             {
-                SettingsManager.Current.Redirects.Remove(r);
                 Redirects.Remove(r);
-                SettingsManager.Save();
+                IsDirty = true;
             }
+        }
+
+        private void SaveSettings()
+        {
+            SettingsManager.Current.AutoStart = AutoStart;
+            SettingsManager.Current.Redirects.Clear();
+            SettingsManager.Current.Redirects.AddRange(Redirects);
+            SettingsManager.Save();
+            IsDirty = false;
+            
+            MessageBox.Show("Settings saved successfully.", "WannaTool", MessageBoxButton.OK, MessageBoxImage.Information);
         }
 
         private async void Reindex(object? parameter)

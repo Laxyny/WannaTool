@@ -34,7 +34,12 @@ namespace WannaTool
 
     public static class SettingsManager
     {
-        private static readonly string SettingsPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "settings.json");
+        private static readonly string SettingsFolder = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), 
+            "WannaTool"
+        );
+        private static readonly string SettingsPath = Path.Combine(SettingsFolder, "settings.json");
+        
         public static ToolSettings Current { get; private set; } = new ToolSettings();
 
         static SettingsManager()
@@ -65,6 +70,11 @@ namespace WannaTool
         {
             try
             {
+                if (!Directory.Exists(SettingsFolder))
+                {
+                    Directory.CreateDirectory(SettingsFolder);
+                }
+
                 var options = new JsonSerializerOptions { WriteIndented = true };
                 var json = JsonSerializer.Serialize(Current, options);
                 File.WriteAllText(SettingsPath, json);

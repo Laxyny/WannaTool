@@ -102,6 +102,9 @@
                             <Trigger Property="IsPressed" Value="True">
                                 <Setter TargetName="Bd" Property="Opacity" Value="0.8"/>
                             </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Bd" Property="Opacity" Value="0.5"/>
+                            </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>
@@ -241,7 +244,7 @@
                             </StackPanel>
                             
                             <Button Content="General" Command="{Binding NavCommand}" CommandParameter="General" Style="{StaticResource NavButtonStyle}" Tag="{Binding IsGeneralVisible}"/>
-                            <Button Content="Search &amp; Redirects" Command="{Binding NavCommand}" CommandParameter="Search" Style="{StaticResource NavButtonStyle}" Tag="{Binding IsSearchVisible}"/>
+                            <Button Content="Search &amp; redirects" Command="{Binding NavCommand}" CommandParameter="Search" Style="{StaticResource NavButtonStyle}" Tag="{Binding IsSearchVisible}"/>
                             <Button Content="Maintenance" Command="{Binding NavCommand}" CommandParameter="Maintenance" Style="{StaticResource NavButtonStyle}" Tag="{Binding IsMaintenanceVisible}"/>
                             <Button Content="About" Command="{Binding NavCommand}" CommandParameter="About" Style="{StaticResource NavButtonStyle}" Tag="{Binding IsAboutVisible}"/>
                         </StackPanel>
@@ -254,9 +257,16 @@
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
 
-                    <Button Grid.Row="0" HorizontalAlignment="Right" VerticalAlignment="Top" 
-                            Content="✕" Style="{StaticResource GhostButtonStyle}"
-                            Margin="0,16,16,0" Click="CloseButton_Click"/>
+                    <Grid Grid.Row="0" Margin="0,16,16,0">
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                            <Button Content="Save changes" 
+                                    Command="{Binding SaveCommand}" 
+                                    Style="{StaticResource PrimaryButtonStyle}" 
+                                    Margin="0,0,16,0"
+                                    Visibility="{Binding IsDirty, Converter={StaticResource BoolToVis}}"/>
+                            <Button Content="✕" Style="{StaticResource GhostButtonStyle}" Click="CloseButton_Click"/>
+                        </StackPanel>
+                    </Grid>
 
                     <Grid Grid.Row="1" Margin="40,10,40,40">
                         
@@ -285,7 +295,7 @@
                                 <RowDefinition Height="Auto"/>
                             </Grid.RowDefinitions>
                             
-                            <TextBlock Text="Search &amp; Redirects" Style="{StaticResource PageTitle}"/>
+                            <TextBlock Text="Search &amp; redirects" Style="{StaticResource PageTitle}"/>
 
                             <Border Grid.Row="1" Background="{StaticResource CardBgBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="8" Padding="4">
                                 <ScrollViewer VerticalScrollBarVisibility="Auto">
@@ -344,7 +354,7 @@
                                 </ScrollViewer>
                             </Border>
 
-                            <Button Grid.Row="2" Content="+ Add Redirect" 
+                            <Button Grid.Row="2" Content="+ Add redirect" 
                                     Command="{Binding AddRedirectCommand}"
                                     Style="{StaticResource PrimaryButtonStyle}"
                                     HorizontalAlignment="Left" Margin="0,16,0,0"/>
@@ -360,10 +370,10 @@
                                         <ColumnDefinition Width="Auto"/>
                                     </Grid.ColumnDefinitions>
                                     <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                        <TextBlock Text="Rebuild Search Index" Style="{StaticResource SectionHeader}"/>
+                                        <TextBlock Text="Rebuild search index" Style="{StaticResource SectionHeader}"/>
                                         <TextBlock Text="Force a full rescan if search results are missing or outdated." Style="{StaticResource SubText}"/>
                                     </StackPanel>
-                                    <Button Grid.Column="1" Content="Rebuild Index" Command="{Binding ReindexCommand}" Style="{StaticResource GhostButtonStyle}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"/>
+                                    <Button Grid.Column="1" Content="Rebuild index" Command="{Binding ReindexCommand}" Style="{StaticResource GhostButtonStyle}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"/>
                                 </Grid>
                             </Border>
                         </StackPanel>
@@ -380,7 +390,13 @@
                                 <TextBlock Text="Created by" Foreground="{StaticResource TextSecondaryBrush}" HorizontalAlignment="Center"/>
                                 <TextBlock Text="{Binding Author}" Foreground="{StaticResource TextPrimaryBrush}" FontWeight="SemiBold" FontSize="16" HorizontalAlignment="Center" Margin="0,4,0,32"/>
 
-                                <Button Content="View Source on GitHub" Command="{Binding OpenRepoCommand}" 
+                                <Button Content="Open help documentation" Command="{Binding OpenHelpCommand}" 
+                                        Style="{StaticResource PrimaryButtonStyle}" 
+                                        HorizontalAlignment="Center"
+                                        Margin="0,0,0,16"
+                                        Cursor="Hand"/>
+
+                                <Button Content="View source on GitHub" Command="{Binding OpenRepoCommand}" 
                                         Style="{StaticResource GhostButtonStyle}" 
                                         Foreground="{StaticResource AccentBrush}" 
                                         Cursor="Hand"/>
