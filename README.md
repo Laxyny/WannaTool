@@ -8,6 +8,10 @@
 ![GitHub pull requests](https://img.shields.io/github/issues-pr/laxyny/wannatool?style=for-the-badge)
 ![GitHub license](https://img.shields.io/github/license/laxyny/wannatool?style=for-the-badge)
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/Laxyny/WannaTool/main/.github/assets/screenshot.png" alt="WannaTool Screenshot" width="700"/>
+</p>
+
 ---
 
 ## About

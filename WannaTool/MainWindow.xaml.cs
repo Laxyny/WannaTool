@@ -35,6 +35,15 @@ namespace WannaTool
             this.Loaded += OnLoaded;
             this.Deactivated += (s, e) => this.Hide();
             this.Closing += OnClosing;
+            
+            this.PreviewKeyDown += (s, e) =>
+            {
+                if (e.Key == Key.Escape)
+                {
+                    e.Handled = true;
+                    this.Hide();
+                }
+            };
         }
 
         private void InitializeTrayIcon()
@@ -50,6 +59,8 @@ namespace WannaTool
 
             var contextMenu = new Forms.ContextMenuStrip();
             contextMenu.Items.Add("Open", null, (s, e) => ShowWindow());
+            contextMenu.Items.Add("-");
+            contextMenu.Items.Add("Settings", null, (s, e) => OpenSettings());
             contextMenu.Items.Add("-");
             contextMenu.Items.Add("Exit", null, (s, e) => ExitApp());
             
@@ -130,6 +141,12 @@ namespace WannaTool
             {
                 ShowWindow();
             }
+        }
+
+        private void OpenSettings()
+        {
+            var settingsWindow = new SettingsWindow();
+            settingsWindow.Show();
         }
 
         private void ShowWindow()
