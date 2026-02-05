@@ -65,10 +65,27 @@ namespace WannaTool
         {
             _notifyIcon = new Forms.NotifyIcon
             {
-                Icon = Drawing.SystemIcons.Application,
                 Visible = true,
                 Text = "WannaTool"
             };
+
+            try
+            {
+                var iconUri = new Uri("pack://application:,,,/WannaToolIcon.ico");
+                var streamInfo = Application.GetResourceStream(iconUri);
+                if (streamInfo != null)
+                {
+                    _notifyIcon.Icon = new Drawing.Icon(streamInfo.Stream);
+                }
+                else
+                {
+                    _notifyIcon.Icon = Drawing.SystemIcons.Application;
+                }
+            }
+            catch
+            {
+                _notifyIcon.Icon = Drawing.SystemIcons.Application;
+            }
 
             _notifyIcon.DoubleClick += (s, e) => ToggleVisibility();
 

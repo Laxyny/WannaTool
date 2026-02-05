@@ -14,7 +14,8 @@
         Topmost="True"
         Width="700"
         SizeToContent="Height"
-        ResizeMode="NoResize">
+        ResizeMode="NoResize"
+        Icon="WannaToolIcon.ico">
 
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVis" />

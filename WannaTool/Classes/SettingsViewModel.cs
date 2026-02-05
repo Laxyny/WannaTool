@@ -20,7 +20,7 @@ namespace WannaTool
         private bool _enableSystemMonitoring;
         private int _systemMonitorInterval = 2;
         private string _appName = "WannaTool";
-        private string _appVersion = "v0.3.0-alpha";
+        private string _appVersion = "v0.4.0-alpha";
         private string _author = "Kevin GREGOIRE - Nodasys";
         private string _repoUrl = "https://github.com/Laxyny/WannaTool";
         private bool _isDirty;

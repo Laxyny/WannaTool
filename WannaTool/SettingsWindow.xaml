@@ -11,7 +11,8 @@
         WindowStyle="None"
         AllowsTransparency="True"
         Background="Transparent"
-        ResizeMode="NoResize">
+        ResizeMode="NoResize"
+        Icon="WannaToolIcon.ico">
 
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVis" />
@@ -237,9 +238,7 @@
                     <Grid>
                         <StackPanel Margin="16,32,16,16">
                             <StackPanel Orientation="Horizontal" Margin="0,0,0,32">
-                                <Border Width="24" Height="24" CornerRadius="6" Background="{StaticResource AccentBrush}" Margin="0,0,12,0">
-                                    <TextBlock Text="W" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="Bold" FontSize="14"/>
-                                </Border>
+                                <Image Source="pack://application:,,,/WannaToolIcon.ico" Width="24" Height="24" Margin="0,0,12,0" RenderOptions.BitmapScalingMode="HighQuality"/>
                                 <TextBlock Text="Settings" Foreground="{StaticResource TextPrimaryBrush}" FontSize="18" FontWeight="Bold" VerticalAlignment="Center"/>
                             </StackPanel>
                             
