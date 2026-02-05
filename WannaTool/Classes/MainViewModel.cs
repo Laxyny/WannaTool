@@ -60,8 +60,13 @@ namespace WannaTool
             {
                 _selectedResult = value;
                 OnPropertyChanged(nameof(SelectedResult));
+                OnPropertyChanged(nameof(CanRunAsAdmin));
             }
         }
+
+        private static readonly HashSet<string> RunnableExtensions = new(StringComparer.OrdinalIgnoreCase) { ".exe", ".bat", ".cmd", ".msi", ".ps1", ".com" };
+
+        public bool CanRunAsAdmin => SelectedResult is SearchResult r && !r.IsFolder && !r.FullPath.StartsWith("!") && RunnableExtensions.Contains(Path.GetExtension(r.FullPath));
 
         public bool IsLoading
         {
@@ -91,6 +96,7 @@ namespace WannaTool
         public ICommand PreviousResultCommand { get; }
         public ICommand CopyPathCommand { get; }
         public ICommand OpenLocationCommand { get; }
+        public ICommand RunAsAdminCommand { get; }
         public ICommand ExitCommand { get; }
         public ICommand ReloadCommand { get; }
         public ICommand ClearCommand { get; }
@@ -103,6 +109,7 @@ namespace WannaTool
             PreviousResultCommand = new RelayCommand(_ => MoveSelection(-1));
             CopyPathCommand = new RelayCommand(CopyPath);
             OpenLocationCommand = new RelayCommand(OpenLocation);
+            RunAsAdminCommand = new RelayCommand(RunAsAdmin);
             ExitCommand = new RelayCommand(_ => Application.Current.Shutdown());
             
             ReloadCommand = new RelayCommand(async _ => await Indexer.BuildIndexAsync());
@@ -393,6 +400,22 @@ namespace WannaTool
                 } 
                 catch { }
                 Application.Current.MainWindow.Hide();
+            }
+        }
+
+        private void RunAsAdmin(object? parameter)
+        {
+            if (parameter is SearchResult res && CanRunAsAdmin)
+            {
+                try
+                {
+                    Process.Start(new ProcessStartInfo(res.FullPath) { UseShellExecute = true, Verb = "runas" });
+                    Application.Current.MainWindow.Hide();
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"Error running as administrator: {ex.Message}");
+                }
             }
         }
 

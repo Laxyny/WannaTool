@@ -195,6 +195,10 @@
                             <MenuItem Header="Open" 
                                       Command="{Binding PlacementTarget.DataContext.ExecuteCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" 
                                       CommandParameter="{Binding PlacementTarget.SelectedItem, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                            <MenuItem Header="Open as administrator" 
+                                      Command="{Binding PlacementTarget.DataContext.RunAsAdminCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" 
+                                      CommandParameter="{Binding PlacementTarget.SelectedItem, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                      Visibility="{Binding PlacementTarget.DataContext.CanRunAsAdmin, RelativeSource={RelativeSource AncestorType=ContextMenu}, Converter={StaticResource BoolToVis}}" />
                             <MenuItem Header="Open file location" 
                                       Command="{Binding PlacementTarget.DataContext.OpenLocationCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" 
                                       CommandParameter="{Binding PlacementTarget.SelectedItem, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
