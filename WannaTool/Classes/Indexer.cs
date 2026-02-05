@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using LiteDB;
 
@@ -21,11 +22,19 @@ namespace WannaTool
 
         private static readonly string AppDataFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "WannaTool");
         private static readonly string DatabasePath = Path.Combine(AppDataFolder, "index.db");
-        
+
         private static LiteDatabase? _db;
         private static ILiteCollection<IndexEntry>? _collection;
-        
+        private static readonly List<FileSystemWatcher> _watchers = new();
+        private static CancellationTokenSource? _watcherRebuildCts;
+        private static readonly object _watcherLock = new();
+
         public static bool IsReady { get; private set; }
+
+        public static long GetEntryCount()
+        {
+            try { return _collection?.Count() ?? 0; } catch { return 0; }
+        }
 
         private static readonly List<string> TargetFolders = new()
         {
@@ -80,10 +89,24 @@ namespace WannaTool
 
         private static void StartWatcher()
         {
-            foreach (var path in TargetFolders)
+            lock (_watcherLock)
             {
-                if (Directory.Exists(path))
+                foreach (var w in _watchers)
                 {
+                    try
+                    {
+                        w.Created -= OnFileChanged;
+                        w.Deleted -= OnFileChanged;
+                        w.Renamed -= OnFileChanged;
+                        w.Dispose();
+                    }
+                    catch { }
+                }
+                _watchers.Clear();
+
+                foreach (var path in TargetFolders)
+                {
+                    if (!Directory.Exists(path)) continue;
                     try
                     {
                         var watcher = new FileSystemWatcher(path);
@@ -93,6 +116,7 @@ namespace WannaTool
                         watcher.Deleted += OnFileChanged;
                         watcher.Renamed += OnFileChanged;
                         watcher.EnableRaisingEvents = true;
+                        _watchers.Add(watcher);
                     }
                     catch { }
                 }
@@ -101,7 +125,16 @@ namespace WannaTool
 
         private static async void OnFileChanged(object sender, FileSystemEventArgs e)
         {
-            await Task.Delay(2000); 
+            _watcherRebuildCts?.Cancel();
+            _watcherRebuildCts = new CancellationTokenSource();
+            var token = _watcherRebuildCts.Token;
+            try
+            {
+                await Task.Delay(2000, token);
+                if (token.IsCancellationRequested) return;
+                await PerformScanningAsync();
+            }
+            catch (TaskCanceledException) { }
         }
 
         public static async Task BuildIndexAsync()
@@ -282,7 +315,26 @@ namespace WannaTool
 
         public static void Dispose()
         {
+            lock (_watcherLock)
+            {
+                foreach (var w in _watchers)
+                {
+                    try
+                    {
+                        w.Created -= OnFileChanged;
+                        w.Deleted -= OnFileChanged;
+                        w.Renamed -= OnFileChanged;
+                        w.Dispose();
+                    }
+                    catch { }
+                }
+                _watchers.Clear();
+            }
+            _watcherRebuildCts?.Cancel();
+            _watcherRebuildCts?.Dispose();
             _db?.Dispose();
+            _db = null;
+            _collection = null;
         }
     }
 }

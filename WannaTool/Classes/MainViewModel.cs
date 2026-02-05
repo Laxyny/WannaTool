@@ -126,11 +126,11 @@ namespace WannaTool
         {
             if (SettingsManager.Current.EnableSystemMonitoring)
             {
-                if (isVisible) 
+                if (isVisible)
                 {
                     SystemMetricsService.Instance.Start();
                 }
-                else 
+                else
                 {
                     SystemMetricsService.Instance.Stop();
                     SystemMetricsText = "";
@@ -141,6 +141,20 @@ namespace WannaTool
                 SystemMetricsService.Instance.Stop();
                 SystemMetricsText = "";
             }
+
+            if (!isVisible)
+            {
+                Results.Clear();
+                SelectedResult = null;
+                IconLoader.TrimToWatermark(4);
+                GC.Collect(1, GCCollectionMode.Optimized);
+                GC.WaitForPendingFinalizers();
+            }
+
+#if DEBUG
+            if (MemoryDiagnostics.Enabled)
+                MemoryDiagnostics.Report(Results.Count);
+#endif
         }
 
         private void OnMetricsUpdated(object? sender, SystemMetrics e)

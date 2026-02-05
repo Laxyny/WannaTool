@@ -15,10 +15,10 @@ namespace WannaTool
         public static List<SearchResult> GetTopProcesses(int limit = 10, bool killMode = false)
         {
             var results = new List<SearchResult>();
+            Process[]? processes = null;
             try
             {
-                var processes = Process.GetProcesses();
-                
+                processes = Process.GetProcesses();
                 var top = processes
                     .OrderByDescending(p => p.WorkingSet64)
                     .Take(limit)
@@ -41,19 +41,28 @@ namespace WannaTool
                             Icon = !string.IsNullOrEmpty(path) ? IconLoader.GetIcon(path, false) : null
                         });
                     }
-                    catch {}
+                    catch { }
                 }
             }
             catch { }
+            finally
+            {
+                if (processes != null)
+                {
+                    foreach (var p in processes) p.Dispose();
+                }
+            }
             return results;
         }
 
         public static List<SearchResult> GetKillCandidates(string query)
         {
             var results = new List<SearchResult>();
+            Process[]? all = null;
             try
             {
-                var processes = Process.GetProcesses()
+                all = Process.GetProcesses();
+                var processes = all
                     .Where(p => p.ProcessName.Contains(query, StringComparison.OrdinalIgnoreCase))
                     .OrderByDescending(p => p.WorkingSet64)
                     .Take(10)
@@ -79,6 +88,13 @@ namespace WannaTool
                 }
             }
             catch { }
+            finally
+            {
+                if (all != null)
+                {
+                    foreach (var p in all) p.Dispose();
+                }
+            }
             return results;
         }
 
@@ -96,7 +112,7 @@ namespace WannaTool
 
         public static void KillProcess(int pid)
         {
-            var p = Process.GetProcessById(pid);
+            using var p = Process.GetProcessById(pid);
             p.Kill();
         }
 
@@ -104,13 +120,11 @@ namespace WannaTool
         {
             try
             {
-                var p = Process.GetProcessById(pid);
+                using var p = Process.GetProcessById(pid);
                 if (p.MainWindowHandle != IntPtr.Zero)
                 {
                     if (IsIconic(p.MainWindowHandle))
-                    {
                         ShowWindow(p.MainWindowHandle, 9);
-                    }
                     SetForegroundWindow(p.MainWindowHandle);
                 }
             }

@@ -1,54 +1,89 @@
 using System;
-using System.Runtime.Caching;
-using System.Windows;
-using System.Windows.Interop;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
+using System.Collections.Generic;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Windows;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
+using System.Windows.Interop;
 
 static class IconLoader
 {
-    private static readonly MemoryCache _cache = new MemoryCache("IconCache");
-    private static readonly CacheItemPolicy _policy = new CacheItemPolicy
+    private const int MaxCacheCount = 32;
+    private const int DisplaySize = 24;
+
+    private static readonly LinkedList<string> _order = new();
+    private static readonly Dictionary<string, (ImageSource Image, LinkedListNode<string> Node)> _cache = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly object _lock = new();
+
+    public static int GetCacheCount()
     {
-        SlidingExpiration = TimeSpan.FromMinutes(10),
-    };
+        lock (_lock) return _cache.Count;
+    }
+
+    public static void TrimToWatermark(int maxCount)
+    {
+        lock (_lock)
+        {
+            while (_cache.Count > maxCount && _order.First != null)
+            {
+                var key = _order.First.Value;
+                _order.RemoveFirst();
+                _cache.Remove(key);
+            }
+        }
+    }
 
     public static ImageSource? GetIcon(string path, bool isFolder)
     {
         if (string.IsNullOrEmpty(path)) return null;
 
         var key = (isFolder ? "D:" : "F:") + path.ToLowerInvariant();
-        if (_cache.Get(key) is ImageSource imgCached)
-            return imgCached;
+
+        lock (_lock)
+        {
+            if (_cache.TryGetValue(key, out var entry))
+            {
+                _order.Remove(entry.Node);
+                _order.AddLast(entry.Node);
+                return entry.Image;
+            }
+        }
 
         IntPtr hIcon = IntPtr.Zero;
         try
         {
-            if (isFolder)
-            {
-                hIcon = GetShellIcon(path, true);
-            }
-            else
-            {
-                hIcon = GetShellIcon(path, false);
-            }
+            hIcon = GetShellIcon(path, isFolder);
+            if (hIcon == IntPtr.Zero) return null;
 
-            if (hIcon != IntPtr.Zero)
-            {
-                var icon = Imaging.CreateBitmapSourceFromHIcon(
-                    hIcon,
-                    Int32Rect.Empty,
-                    BitmapSizeOptions.FromEmptyOptions());
-                
-                icon.Freeze();
-                
-                DestroyIcon(hIcon);
+            var icon = Imaging.CreateBitmapSourceFromHIcon(
+                hIcon,
+                Int32Rect.Empty,
+                BitmapSizeOptions.FromWidthAndHeight(DisplaySize, DisplaySize));
+            DestroyIcon(hIcon);
+            icon.Freeze();
 
-                _cache.Set(key, icon, _policy);
-                return icon;
+            lock (_lock)
+            {
+                if (_cache.TryGetValue(key, out var existing))
+                {
+                    _order.Remove(existing.Node);
+                    _order.AddLast(existing.Node);
+                    _cache[key] = (icon, existing.Node);
+                }
+                else
+                {
+                    while (_cache.Count >= MaxCacheCount && _order.First != null)
+                    {
+                        var evict = _order.First.Value;
+                        _order.RemoveFirst();
+                        _cache.Remove(evict);
+                    }
+                    var node = _order.AddLast(key);
+                    _cache[key] = (icon, node);
+                }
             }
+            return icon;
         }
         catch { }
 
@@ -58,30 +93,22 @@ static class IconLoader
     private static IntPtr GetShellIcon(string path, bool isFolder)
     {
         const uint SHGFI_ICON = 0x100;
-        const uint SHGFI_LARGEICON = 0x0; // 32x32
+        const uint SHGFI_LARGEICON = 0x0;
         const uint SHGFI_USEFILEATTRIBUTES = 0x10;
-        
+
         uint attributes = isFolder ? 0x10u : 0x80u;
         uint flags = SHGFI_ICON | SHGFI_LARGEICON;
-        
+
         string ext = Path.GetExtension(path);
-        bool isExeOrLnk = ext.Equals(".exe", StringComparison.OrdinalIgnoreCase) || 
+        bool isExeOrLnk = ext.Equals(".exe", StringComparison.OrdinalIgnoreCase) ||
                           ext.Equals(".lnk", StringComparison.OrdinalIgnoreCase) ||
                           ext.Equals(".ico", StringComparison.OrdinalIgnoreCase);
 
         if (!isExeOrLnk && !isFolder)
-        {
             flags |= SHGFI_USEFILEATTRIBUTES;
-        }
 
         SHFILEINFO shfi = new();
-        IntPtr result = SHGetFileInfo(
-            path,
-            attributes,
-            out shfi,
-            (uint)Marshal.SizeOf<SHFILEINFO>(),
-            flags);
-
+        SHGetFileInfo(path, attributes, out shfi, (uint)Marshal.SizeOf<SHFILEINFO>(), flags);
         return shfi.hIcon;
     }
 
