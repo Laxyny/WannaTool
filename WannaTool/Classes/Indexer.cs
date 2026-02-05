@@ -67,9 +67,8 @@ namespace WannaTool
                 {
                     await PerformScanningAsync();
                 }
-                else
-                {
-                }
+                
+                StartWatcher();
 
                 IsReady = true;
             }
@@ -77,6 +76,32 @@ namespace WannaTool
             {
                 System.Diagnostics.Debug.WriteLine($"Indexer Init Error: {ex.Message}");
             }
+        }
+
+        private static void StartWatcher()
+        {
+            foreach (var path in TargetFolders)
+            {
+                if (Directory.Exists(path))
+                {
+                    try
+                    {
+                        var watcher = new FileSystemWatcher(path);
+                        watcher.IncludeSubdirectories = true;
+                        watcher.NotifyFilter = NotifyFilters.FileName | NotifyFilters.DirectoryName;
+                        watcher.Created += OnFileChanged;
+                        watcher.Deleted += OnFileChanged;
+                        watcher.Renamed += OnFileChanged;
+                        watcher.EnableRaisingEvents = true;
+                    }
+                    catch { }
+                }
+            }
+        }
+
+        private static async void OnFileChanged(object sender, FileSystemEventArgs e)
+        {
+            await Task.Delay(2000); 
         }
 
         public static async Task BuildIndexAsync()

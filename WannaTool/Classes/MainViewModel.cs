@@ -92,6 +92,9 @@ namespace WannaTool
         public ICommand CopyPathCommand { get; }
         public ICommand OpenLocationCommand { get; }
         public ICommand ExitCommand { get; }
+        public ICommand ReloadCommand { get; }
+        public ICommand ClearCommand { get; }
+        public ICommand HistoryCommand { get; }
 
         public MainViewModel()
         {
@@ -101,6 +104,10 @@ namespace WannaTool
             CopyPathCommand = new RelayCommand(CopyPath);
             OpenLocationCommand = new RelayCommand(OpenLocation);
             ExitCommand = new RelayCommand(_ => Application.Current.Shutdown());
+            
+            ReloadCommand = new RelayCommand(async _ => await Indexer.BuildIndexAsync());
+            ClearCommand = new RelayCommand(_ => { SearchText = ""; Results.Clear(); });
+            HistoryCommand = new RelayCommand(_ => { SearchText = "!history"; ExecuteCommand.Execute(null); });
             
             _ = Indexer.InitializeAsync();
             
@@ -167,6 +174,18 @@ namespace WannaTool
             if (redirect != null)
             {
                 UpdateResults(new List<SearchResult> { redirect });
+                return;
+            }
+
+            if (query.Equals("!reload", StringComparison.OrdinalIgnoreCase))
+            {
+                UpdateResults(new List<SearchResult> { new SearchResult { DisplayName = "Reload Index", FullPath = "!reload", IsFolder = false } });
+                return;
+            }
+
+            if (query.Equals("!clear", StringComparison.OrdinalIgnoreCase))
+            {
+                UpdateResults(new List<SearchResult> { new SearchResult { DisplayName = "Clear Results", FullPath = "!clear", IsFolder = false } });
                 return;
             }
 
@@ -276,7 +295,19 @@ namespace WannaTool
 
             try
             {
-                if (result.FullPath.StartsWith("kill:"))
+                if (result.FullPath == "!reload")
+                {
+                    ReloadCommand.Execute(null);
+                    Application.Current.MainWindow.Hide();
+                    SearchText = "";
+                    return;
+                }
+                else if (result.FullPath == "!clear")
+                {
+                    ClearCommand.Execute(null);
+                    return;
+                }
+                else if (result.FullPath.StartsWith("kill:"))
                 {
                     var parts = result.FullPath.Substring(5).Split('|');
                     if (int.TryParse(parts[0], out int pid))

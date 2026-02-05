@@ -1,8 +1,10 @@
 using System;
 using System.Runtime.InteropServices;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interop;
+using System.Windows.Media;
 using NHotkey;
 using NHotkey.Wpf;
 using Application = System.Windows.Application;
@@ -214,6 +216,21 @@ namespace WannaTool
             this.Topmost = true;
             SearchBox.Focus();
             SearchBox.SelectAll();
+        }
+
+        private void ResultsListBox_PreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            var listBox = (System.Windows.Controls.ListBox)sender;
+            var element = e.OriginalSource as DependencyObject;
+            while (element != null)
+            {
+                if (element is ListBoxItem item)
+                {
+                    listBox.SelectedItem = item.DataContext;
+                    break;
+                }
+                element = VisualTreeHelper.GetParent(element);
+            }
         }
 
         [DllImport("user32.dll")]

@@ -20,6 +20,49 @@
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVis" />
         
+        <Style TargetType="ContextMenu">
+            <Setter Property="Background" Value="#27272A"/>
+            <Setter Property="BorderBrush" Value="#3F3F46"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="HasDropShadow" Value="True"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ContextMenu">
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="8"
+                                Padding="4">
+                            <ItemsPresenter/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style TargetType="MenuItem">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="#F4F4F5"/>
+            <Setter Property="Padding" Value="12,8"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="MenuItem">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="4" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter Content="{TemplateBinding Header}" 
+                                              HorizontalAlignment="Left" 
+                                              VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsHighlighted" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#3F3F46"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <Style x:Key="ModernScrollBar" TargetType="{x:Type ScrollBar}">
             <Setter Property="Stylus.IsPressAndHoldEnabled" Value="false"/>
             <Setter Property="Stylus.IsFlicksEnabled" Value="false"/>
@@ -133,8 +176,10 @@
                 <Border Height="1" Background="#1FFFFFFF" 
                         Visibility="{Binding HasResults, Converter={StaticResource BoolToVis}}" />
 
-                <ListBox ItemsSource="{Binding Results}" 
+                <ListBox x:Name="ResultsListBox"
+                         ItemsSource="{Binding Results}" 
                          SelectedItem="{Binding SelectedResult}"
+                         PreviewMouseRightButtonDown="ResultsListBox_PreviewMouseRightButtonDown"
                          Background="Transparent"
                          BorderThickness="0"
                          MaxHeight="400"
@@ -145,6 +190,19 @@
                          VirtualizingStackPanel.VirtualizationMode="Recycling"
                          Visibility="{Binding HasResults, Converter={StaticResource BoolToVis}}"
                          Padding="8">
+                    <ListBox.ContextMenu>
+                        <ContextMenu>
+                            <MenuItem Header="Open" 
+                                      Command="{Binding PlacementTarget.DataContext.ExecuteCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" 
+                                      CommandParameter="{Binding PlacementTarget.SelectedItem, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                            <MenuItem Header="Open file location" 
+                                      Command="{Binding PlacementTarget.DataContext.OpenLocationCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" 
+                                      CommandParameter="{Binding PlacementTarget.SelectedItem, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                            <MenuItem Header="Copy path" 
+                                      Command="{Binding PlacementTarget.DataContext.CopyPathCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" 
+                                      CommandParameter="{Binding PlacementTarget.SelectedItem, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                        </ContextMenu>
+                    </ListBox.ContextMenu>
                     <ListBox.Resources>
                         <Style TargetType="{x:Type ScrollBar}" BasedOn="{StaticResource ModernScrollBar}"/>
                     </ListBox.Resources>
@@ -166,14 +224,6 @@
                                 <Grid.InputBindings>
                                     <MouseBinding Gesture="LeftDoubleClick" Command="{Binding DataContext.ExecuteCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
                                 </Grid.InputBindings>
-                                
-                                <Grid.ContextMenu>
-                                    <ContextMenu>
-                                        <MenuItem Header="Open" Command="{Binding DataContext.ExecuteCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
-                                        <MenuItem Header="Open File Location" Command="{Binding DataContext.OpenLocationCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
-                                        <MenuItem Header="Copy Path" Command="{Binding DataContext.CopyPathCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
-                                    </ContextMenu>
-                                </Grid.ContextMenu>
                             </Grid>
                         </DataTemplate>
                     </ListBox.ItemTemplate>
