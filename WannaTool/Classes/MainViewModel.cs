@@ -22,8 +22,22 @@ namespace WannaTool
         private bool _isLoading;
         private bool _hasResults;
         private CancellationTokenSource? _searchCts;
+        private string _systemMetricsText = "";
 
         public ObservableCollection<SearchResult> Results { get; } = new();
+
+        public string SystemMetricsText
+        {
+            get => _systemMetricsText;
+            set
+            {
+                if (_systemMetricsText != value)
+                {
+                    _systemMetricsText = value;
+                    OnPropertyChanged(nameof(SystemMetricsText));
+                }
+            }
+        }
 
         public string SearchText
         {
@@ -89,6 +103,38 @@ namespace WannaTool
             ExitCommand = new RelayCommand(_ => Application.Current.Shutdown());
             
             _ = Indexer.InitializeAsync();
+            
+            SystemMetricsService.Instance.SetInterval(SettingsManager.Current.SystemMonitorInterval);
+            SystemMetricsService.Instance.MetricsUpdated += OnMetricsUpdated;
+        }
+
+        public void OnVisibilityChanged(bool isVisible)
+        {
+            if (SettingsManager.Current.EnableSystemMonitoring)
+            {
+                if (isVisible) 
+                {
+                    SystemMetricsService.Instance.Start();
+                }
+                else 
+                {
+                    SystemMetricsService.Instance.Stop();
+                    SystemMetricsText = "";
+                }
+            }
+            else
+            {
+                SystemMetricsService.Instance.Stop();
+                SystemMetricsText = "";
+            }
+        }
+
+        private void OnMetricsUpdated(object? sender, SystemMetrics e)
+        {
+            Application.Current.Dispatcher.Invoke(() =>
+            {
+                SystemMetricsText = $"CPU: {e.CpuUsage:F0}%   RAM: {e.AppRamUsage / 1024 / 1024} MB";
+            });
         }
 
         private async void DebounceSearch()
@@ -122,6 +168,28 @@ namespace WannaTool
             {
                 UpdateResults(new List<SearchResult> { redirect });
                 return;
+            }
+
+            if (query.Equals("!top", StringComparison.OrdinalIgnoreCase))
+            {
+                UpdateResults(ProcessHelper.GetTopProcesses(10, killMode: false));
+                return;
+            }
+
+            if (query.Equals("!kill", StringComparison.OrdinalIgnoreCase))
+            {
+                UpdateResults(ProcessHelper.GetTopProcesses(10, killMode: true));
+                return;
+            }
+
+            if (query.StartsWith("!kill ", StringComparison.OrdinalIgnoreCase))
+            {
+                var term = query.Substring(6).Trim();
+                if (!string.IsNullOrEmpty(term))
+                {
+                    UpdateResults(ProcessHelper.GetKillCandidates(term));
+                    return;
+                }
             }
 
             var colon = query.IndexOf(':');
@@ -208,7 +276,43 @@ namespace WannaTool
 
             try
             {
-                if (result.FullPath == "!settings")
+                if (result.FullPath.StartsWith("kill:"))
+                {
+                    var parts = result.FullPath.Substring(5).Split('|');
+                    if (int.TryParse(parts[0], out int pid))
+                    {
+                        var name = parts.Length > 1 ? parts[1] : "this process";
+                        var confirm = MessageBox.Show($"Are you sure you want to terminate '{name}' (PID: {pid})?", 
+                            "Confirm Kill", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+                        
+                        if (confirm == MessageBoxResult.Yes)
+                        {
+                            try 
+                            { 
+                                ProcessHelper.KillProcess(pid); 
+                                MessageBox.Show("Process terminated.", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
+                            }
+                            catch (Exception ex)
+                            {
+                                MessageBox.Show($"Failed to kill process: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                            }
+                        }
+                    }
+                    Application.Current.MainWindow.Hide();
+                    SearchText = "";
+                    return;
+                }
+                else if (result.FullPath.StartsWith("focus:"))
+                {
+                    if (int.TryParse(result.FullPath.Substring(6), out int pid))
+                    {
+                        ProcessHelper.FocusProcess(pid);
+                    }
+                    Application.Current.MainWindow.Hide();
+                    SearchText = "";
+                    return;
+                }
+                else if (result.FullPath == "!settings")
                 {
                     var settingsWindow = new SettingsWindow();
                     settingsWindow.Show();

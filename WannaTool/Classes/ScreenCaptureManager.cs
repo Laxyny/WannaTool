@@ -1,9 +1,14 @@
-﻿using System.Drawing.Imaging;
+using System;
+using System.Drawing;
+using System.Drawing.Imaging;
 using System.IO;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Windows;
 using Microsoft.Toolkit.Uwp.Notifications;
 using DataFormats = System.Windows.DataFormats;
+using Forms = System.Windows.Forms;
+using Drawing = System.Drawing;
 
 namespace WannaTool
 {
@@ -37,6 +42,17 @@ namespace WannaTool
         [return: MarshalAs(UnmanagedType.Bool)]
         private static extern bool DeleteObject(IntPtr hObject);
 
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool GetCursorPos(out POINT lpPoint);
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct POINT
+        {
+            public int X;
+            public int Y;
+        }
+
         public static void CapturePrimary()
         {
             Capture(false);
@@ -51,26 +67,34 @@ namespace WannaTool
         {
             try
             {
-                var screens = allScreens ? Screen.AllScreens.OrderBy(s => s.Bounds.X).ToArray() : new[] { Screen.PrimaryScreen };
-                int totalWidth = screens.Sum(s => s.Bounds.Width);
-                int maxHeight = screens.Max(s => s.Bounds.Height);
-
-                using var bmp = new Bitmap(totalWidth, maxHeight);
-                using var g = Graphics.FromImage(bmp);
-
-                int offsetX = 0;
-                foreach (var screen in screens)
+                Rectangle bounds;
+                
+                if (allScreens)
                 {
-                    g.CopyFromScreen(screen.Bounds.X, screen.Bounds.Y, offsetX, 0, screen.Bounds.Size);
-                    offsetX += screen.Bounds.Width;
+                    int minX = Forms.Screen.AllScreens.Min(s => s.Bounds.X);
+                    int minY = Forms.Screen.AllScreens.Min(s => s.Bounds.Y);
+                    int maxX = Forms.Screen.AllScreens.Max(s => s.Bounds.Right);
+                    int maxY = Forms.Screen.AllScreens.Max(s => s.Bounds.Bottom);
+                    bounds = new Rectangle(minX, minY, maxX - minX, maxY - minY);
                 }
+                else
+                {
+                    GetCursorPos(out var pt);
+                    var screen = Forms.Screen.FromPoint(new Drawing.Point(pt.X, pt.Y));
+                    bounds = screen.Bounds;
+                }
+
+                using var bmp = new Bitmap(bounds.Width, bounds.Height);
+                using var g = Graphics.FromImage(bmp);
+                
+                g.CopyFromScreen(bounds.Location, Drawing.Point.Empty, bounds.Size);
 
                 System.Windows.Clipboard.SetImage(bmp.ToBitmapSource());
 
                 var filePath = SaveScreenshot(bmp);
-                    new ToastContentBuilder()
+                new ToastContentBuilder()
                     .AddText("Screenshot saved")
-                    .AddText(allScreens ? "All screens captured." : "Primary screen captured.")
+                    .AddText(allScreens ? "All screens captured." : "Active monitor captured.")
                     .AddArgument("action", "openScreenshot")
                     .AddArgument("path", filePath)
                     .AddButton(new ToastButton()

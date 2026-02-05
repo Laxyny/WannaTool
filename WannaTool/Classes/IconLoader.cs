@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Runtime.Caching;
 using System.Windows;
 using System.Windows.Interop;
@@ -12,25 +12,67 @@ static class IconLoader
     private static readonly MemoryCache _cache = new MemoryCache("IconCache");
     private static readonly CacheItemPolicy _policy = new CacheItemPolicy
     {
-        SlidingExpiration = TimeSpan.FromMinutes(5),
+        SlidingExpiration = TimeSpan.FromMinutes(10),
     };
 
     public static ImageSource? GetIcon(string path, bool isFolder)
     {
+        if (string.IsNullOrEmpty(path)) return null;
+
         var key = (isFolder ? "D:" : "F:") + path.ToLowerInvariant();
         if (_cache.Get(key) is ImageSource imgCached)
             return imgCached;
 
-        const uint SHGFI_ICON = 0x100;
-        const uint SHGFI_SMALLICON = 0x1;
-        const uint SHGFI_USEFILEATTRIBUTES = 0x10;
-        const uint FILE_ATTRIBUTE_NORMAL = 0x80;
-        const uint FILE_ATTRIBUTE_DIRECTORY = 0x10;
+        IntPtr hIcon = IntPtr.Zero;
+        try
+        {
+            if (isFolder)
+            {
+                hIcon = GetShellIcon(path, true);
+            }
+            else
+            {
+                hIcon = GetShellIcon(path, false);
+            }
 
-        var flags = SHGFI_ICON | SHGFI_SMALLICON | SHGFI_USEFILEATTRIBUTES;
-        var attributes = isFolder
-                           ? FILE_ATTRIBUTE_DIRECTORY
-                           : FILE_ATTRIBUTE_NORMAL;
+            if (hIcon != IntPtr.Zero)
+            {
+                var icon = Imaging.CreateBitmapSourceFromHIcon(
+                    hIcon,
+                    Int32Rect.Empty,
+                    BitmapSizeOptions.FromEmptyOptions());
+                
+                icon.Freeze();
+                
+                DestroyIcon(hIcon);
+
+                _cache.Set(key, icon, _policy);
+                return icon;
+            }
+        }
+        catch { }
+
+        return null;
+    }
+
+    private static IntPtr GetShellIcon(string path, bool isFolder)
+    {
+        const uint SHGFI_ICON = 0x100;
+        const uint SHGFI_LARGEICON = 0x0; // 32x32
+        const uint SHGFI_USEFILEATTRIBUTES = 0x10;
+        
+        uint attributes = isFolder ? 0x10u : 0x80u;
+        uint flags = SHGFI_ICON | SHGFI_LARGEICON;
+        
+        string ext = Path.GetExtension(path);
+        bool isExeOrLnk = ext.Equals(".exe", StringComparison.OrdinalIgnoreCase) || 
+                          ext.Equals(".lnk", StringComparison.OrdinalIgnoreCase) ||
+                          ext.Equals(".ico", StringComparison.OrdinalIgnoreCase);
+
+        if (!isExeOrLnk && !isFolder)
+        {
+            flags |= SHGFI_USEFILEATTRIBUTES;
+        }
 
         SHFILEINFO shfi = new();
         IntPtr result = SHGetFileInfo(
@@ -40,17 +82,7 @@ static class IconLoader
             (uint)Marshal.SizeOf<SHFILEINFO>(),
             flags);
 
-        if (shfi.hIcon == IntPtr.Zero)
-            return null;
-
-        var icon = Imaging.CreateBitmapSourceFromHIcon(
-            shfi.hIcon,
-            Int32Rect.Empty,
-            BitmapSizeOptions.FromEmptyOptions());
-        DestroyIcon(shfi.hIcon);
-
-        _cache.Add(key, icon, _policy);
-        return icon;
+        return shfi.hIcon;
     }
 
     #region P/Invoke
@@ -58,20 +90,6 @@ static class IconLoader
     private static extern IntPtr SHGetFileInfo(
         string pszPath, uint dwFileAttributes,
         out SHFILEINFO psfi, uint cbFileInfo, uint uFlags);
-
-    private static IntPtr SHGetFileIcon(string path, bool isFolder)
-    {
-        const uint SHGFI_ICON = 0x000000100;
-        const uint SHGFI_SMALLICON = 0x000000001;
-        const uint FILE_ATTRIBUTE_DIRECTORY = 0x10;
-
-        SHFILEINFO shfi;
-        SHGetFileInfo(path,
-            isFolder ? FILE_ATTRIBUTE_DIRECTORY : 0,
-            out shfi, (uint)Marshal.SizeOf<SHFILEINFO>(),
-            SHGFI_ICON | SHGFI_SMALLICON);
-        return shfi.hIcon;
-    }
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool DestroyIcon(IntPtr hIcon);

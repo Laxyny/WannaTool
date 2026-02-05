@@ -18,6 +18,7 @@ namespace WannaTool
                     _icon = IconLoader.GetIcon(FullPath, IsFolder);
                 return _icon;
             }
+            set => _icon = value;
         }
 
         public override string ToString()

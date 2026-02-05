@@ -23,6 +23,17 @@ namespace WannaTool
         private Forms.NotifyIcon? _notifyIcon;
         private bool _isExiting;
 
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool GetCursorPos(out POINT lpPoint);
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct POINT
+        {
+            public int X;
+            public int Y;
+        }
+
         public MainWindow()
         {
             InitializeComponent();
@@ -35,6 +46,10 @@ namespace WannaTool
             this.Loaded += OnLoaded;
             this.Deactivated += (s, e) => this.Hide();
             this.Closing += OnClosing;
+            this.IsVisibleChanged += (s, e) => 
+            {
+                _viewModel.OnVisibilityChanged(this.IsVisible);
+            };
             
             this.PreviewKeyDown += (s, e) =>
             {
@@ -50,10 +65,27 @@ namespace WannaTool
         {
             _notifyIcon = new Forms.NotifyIcon
             {
-                Icon = Drawing.SystemIcons.Application,
                 Visible = true,
                 Text = "WannaTool"
             };
+
+            try
+            {
+                var iconUri = new Uri("pack://application:,,,/WannaToolIcon.ico");
+                var streamInfo = Application.GetResourceStream(iconUri);
+                if (streamInfo != null)
+                {
+                    _notifyIcon.Icon = new Drawing.Icon(streamInfo.Stream);
+                }
+                else
+                {
+                    _notifyIcon.Icon = Drawing.SystemIcons.Application;
+                }
+            }
+            catch
+            {
+                _notifyIcon.Icon = Drawing.SystemIcons.Application;
+            }
 
             _notifyIcon.DoubleClick += (s, e) => ToggleVisibility();
 
@@ -151,6 +183,32 @@ namespace WannaTool
 
         private void ShowWindow()
         {
+            GetCursorPos(out var pt);
+            var screen = Forms.Screen.FromPoint(new Drawing.Point(pt.X, pt.Y));
+            var workingArea = screen.WorkingArea;
+
+            var transform = PresentationSource.FromVisual(this)?.CompositionTarget?.TransformFromDevice;
+            if (transform.HasValue)
+            {
+                var dpiScaleX = transform.Value.M11;
+                var dpiScaleY = transform.Value.M22;
+
+                double winW = this.ActualWidth > 0 ? this.ActualWidth : this.Width;
+                double winH = this.ActualHeight > 0 ? this.ActualHeight : 60;
+                double workLeft = workingArea.Left * dpiScaleX;
+                double workTop = workingArea.Top * dpiScaleY;
+                double workWidth = workingArea.Width * dpiScaleX;
+                double workHeight = workingArea.Height * dpiScaleY;
+
+                this.Left = workLeft + (workWidth - winW) / 2;
+                this.Top = workTop + (workHeight - winH) / 2; 
+            }
+            else
+            {
+                this.Left = workingArea.Left + (workingArea.Width - this.Width) / 2;
+                this.Top = workingArea.Top + (workingArea.Height - this.Height) / 2;
+            }
+
             this.Show();
             this.Activate();
             this.Topmost = true;

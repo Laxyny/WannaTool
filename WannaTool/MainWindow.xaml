@@ -14,7 +14,8 @@
         Topmost="True"
         Width="700"
         SizeToContent="Height"
-        ResizeMode="NoResize">
+        ResizeMode="NoResize"
+        Icon="WannaToolIcon.ico">
 
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVis" />
@@ -155,7 +156,7 @@
                                     <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
                                 
-                                <Image Grid.Column="0" Source="{Binding Icon}" Width="24" Height="24" Margin="0,0,12,0"/>
+                                <Image Grid.Column="0" Source="{Binding Icon}" Width="24" Height="24" Margin="0,0,12,0" RenderOptions.BitmapScalingMode="HighQuality"/>
                                 
                                 <StackPanel Grid.Column="1" VerticalAlignment="Center">
                                     <TextBlock Text="{Binding DisplayName}" FontSize="15" Foreground="#EEEEEE" FontWeight="Medium"/>
@@ -177,6 +178,23 @@
                         </DataTemplate>
                     </ListBox.ItemTemplate>
                 </ListBox>
+                
+                <TextBlock Text="{Binding SystemMetricsText}" 
+                           HorizontalAlignment="Right" 
+                           FontSize="10" 
+                           Foreground="#44FFFFFF" 
+                           Margin="0,4,12,8">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="Visibility" Value="Visible"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding SystemMetricsText}" Value="">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
             </StackPanel>
         </Border>
     </Grid>
